@@ -1,0 +1,48 @@
+{% extends 'base5.html' %}
+{% block title %} Audio Shout {% endblock %}
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+<div class="container bg-dark bs-body-dark" >
+<h2 style="color: white; text-align: center;">BurnAfterIt SEC & ESC</h2>
+	<div style="padding: 20px; text-align: center;">
+        <a href="/message" style="color: white; text-decoration: none !important;">
+		<span style="color: white; text-align: left;"><strong>SEC</strong>: Share Ephemeral Content</span> </br><span style="text-align: right;" id="composesequence">
+		  <i class="fa fa-microphone fa-5x" aria-hidden="true" style="padding: 4px;"></i>
+		</span>
+        </a>
+	</div>
+	<div style="padding: 20px; text-align: center;">
+        <a href="/chat" style="color: white; text-decoration: none !important;">
+		<span style="text-align: left;"><strong>ESC</strong>: Ephemeral Secure Chat</span> </br><span style="text-align: right;" id="composesequenceB">
+		  <i class="fa fa-user-secret fa-5x" aria-hidden="true" style="padding: 4px;"></i>
+		</span>
+        </a>
+	</div>
+</div>
+   <script>
+        var icons = ['video-camera', 'microphone', 'share-alt', 'file-text', 'user-secret', 'camera-retro'];
+        textSequence(0);
+        function textSequence(i) {
+            if (icons.length > i) {
+                setTimeout(function() {
+                    document.getElementById("composesequence").innerHTML = '<i class="fa fa-' + icons[i]  +' fa-5x" aria-hidden="true"></i>';
+                    textSequence(++i);
+                }, 2500);
+            } else if (icons.length == i) { // Loop
+                textSequence(0);
+            }
+        }
+        var iconsB = ['share-alt', 'comments', 'user-secret', 'microphone'];
+        textSequenceB(0);
+        function textSequenceB(y) {
+            if (iconsB.length > y) {
+                setTimeout(function() {
+                    document.getElementById("composesequenceB").innerHTML = '<i class="fa fa-' + iconsB[y]  +' fa-5x" aria-hidden="true"></i>';
+                    textSequenceB(++y);
+                }, 2800);
+            } else if (iconsB.length == y) { // Loop
+                textSequenceB(0);
+            }
+        }
+    </script>
+{% endblock %}

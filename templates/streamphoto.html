@@ -1,0 +1,13 @@
+{% extends 'base5.html' %}
+
+{% block title %} Text Shout {% endblock %}
+
+{% block content %}
+<div style="text-align: center;">
+<p>FreeShout <!--{{ shouthash }}--></p>
+<p></br></p>
+
+<img src="data:image/jpeg;base64,{{ shoutphoto }}" style="width: 100%; max-width: 640px;">
+</div>
+
+{% endblock %}

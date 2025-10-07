@@ -1,0 +1,14 @@
+{% extends 'base5.html' %}
+
+{% block title %} Streaming Shout {% endblock %}
+
+{% block content %}
+<div style="text-align: center;">
+<p>FreeShout <!--{{ shouthash }}--></p>
+<p></br></p>
+<audio controls>
+<source src="/streaming/audio/{{ shouthash }}" type="audio/x-wav">
+</audio>
+</div>
+
+{% endblock %}

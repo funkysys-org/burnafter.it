@@ -1,0 +1,307 @@
+{% extends 'base5.html' %}
+{% block title %} Photo {% endblock %}
+<!--
+https://stackoverflow.com/questions/961913/image-resize-before-upload#8397789
+https://wisej.com/support/question/resize-image-before-uploading-with-upload-control
+https://web.archive.org/web/20190428225737/http://zocada.com/compress-resize-images-javascript-browser/
+
+-->
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+<p></p>
+<div class="container" >
+<!--<input id="myFileInput" name="image3" type="file" accept="image/*;capture=camera">-->
+<!-- <input type="file" name="image2" accept="video/*" capture>
+<input type="file" name="image4" accept="audio/*" capture> -->
+<div id=shoutsettings style="display: block; align: center; text-align: center;">
+<input type=hidden id=maxtime name=maxtime value="{{ maxtime }}">
+<input type=hidden id=maxhits name=maxhits value="{{ maxhits }}">
+</div>
+<center>
+<input type=hidden name=to id="to" value="public">
+  <div class="btn-group">
+          <button type="button" class="btn btn-lg btn-copy js-tooltip js-copy border-0" id="data-to-copy" data-toggle="tooltip" data-placement="bottom" data-copy="d" title="Copy" style="color: white; display: block;" hidden><span id="p1"></span></button>
+  </div>
+      <p id="p1" align=center>&nbsp;</p>
+<br><p></p>
+      <p id="p2" align=center>&nbsp;</p>
+	<ul id="recordings" style="text-align: center;"></ul>
+{% if request.MOBILE %}
+	<span class="select-wrapper" id="selectfile">
+           <input type="file" accept="image/*" id="image_src" capture class="filestyle" name="image_src" id="image_src" data-input="false" data-iconName="fa fa-camera fa-5x" data-buttonText="" />
+	</span>
+        <button id="uploadphoto" style="display: block;" ><i class="fa fa-cloud-upload fa-5x" aria-hidden="true"> </i></button>
+        <center><button type="button" id="share" hidden><span class="fa fa-share-alt fa-5x" aria-hidden="true"></span></button></center>
+        <center><button type="button" id="spinner" hidden><span class="fa fa-spinner fa-pulse fa-5x fa-fw" aria-hidden="true"></span></button></center>
+        <img id="mobile-photo-preview" src="#" alt="" style="width: 100%; max-width: 640px;" /></br>
+        <textarea style="display: none;" hidden id="dataurl" readonly></textarea>
+
+{% else %}
+
+	<button id="start-camera"><i class="fa fa-camera fa-5x" aria-hidden="true"></i></button>
+	<center><button type="button" id="share" hidden><span class="fa fa-share-alt fa-5x" aria-hidden="true"></span></button></center>
+	<center><button type="button" id="spinner" hidden><span class="fa fa-spinner fa-pulse fa-5x fa-fw" aria-hidden="true"></span></button></center>
+	<button id="clickphoto" style="display: none;" ><i class="fa fa-camera recording fa-pulse fa-5x" aria-hidden="true"> </i></button>
+	<button id="uploadphoto" style="display: none;" ><i class="fa fa-cloud-upload fa-5x" aria-hidden="true"> </i></button>
+	</br>
+	<video id="video-box" width="640" height="480" autoplay></video>
+	<canvas id="canvas" width="640" height="480"></canvas>
+	<textarea style="display: none;" hidden id="dataurl" readonly></textarea>
+
+
+{% endif %}
+
+</center>
+</div>
+<script>
+
+const now = new Date();
+let p1 = document.querySelector("#p1");
+let p2 = document.querySelector("#p2");
+let shoutsettings = document.querySelector("#shoutsettings");
+
+{% if request.MOBILE %}
+
+let upload_button = document.querySelector("#uploadphoto");
+let image_input = document.querySelector("#image_src");
+//let canvas = document.querySelector("#canvas");
+let dataurl = document.querySelector("#dataurl");
+function fileChange() { 
+    var input_file = document.querySelector('input[type="file"]');
+    var file = input_file.files[0];
+   if (file.type == "image/jpeg" || file.type == "image/png") {
+      var reader = new FileReader();  
+      reader.onload = function(readerEvent) {
+         var image = new Image();
+         image.onload = function(imageEvent) {    
+            var max_size = 1024;
+            var w = image.width;
+            var h = image.height;
+            if (w > h) {  if (w > max_size) { h*=max_size/w; w=max_size; }
+            } else     {  if (h > max_size) { w*=max_size/h; h=max_size; } }
+            var canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            canvas.getContext('2d').drawImage(image, 0, 0, w, h);
+            canvas.style.display = 'none';
+            if (file.type == "image/jpeg") {
+               var dataURL = canvas.toDataURL("image/jpeg", 1.0);
+            } else {
+               var dataURL = canvas.toDataURL("image/png");   
+            }
+            dataurl.value = dataURL;   
+         }
+         image.src = readerEvent.target.result;
+      }
+      reader.readAsDataURL(file);
+   } else {
+      document.getElementById('image_src').value = ''; 
+      alert('Please only select images in JPG- or PNG-format.');  
+   }
+}
+
+$("#image_src").change(function(){
+    const inputto = document.querySelector('input[type="file"]');
+    const filetto = inputto.files[0];
+    filetto instanceof File; // true
+    filetto instanceof Blob; // true
+    let image_data_url = URL.createObjectURL(filetto);
+    var reader = new FileReader();
+    reader.readAsDataURL(filetto);
+    reader.onload = function () {
+//    var base64data = reader.result;
+    $('#mobile-photo-preview').attr('src', reader.result);
+    fileChange();
+    }
+});
+
+upload_button.addEventListener('click', function() {
+        var image_base64 = document.getElementById('dataurl').value
+        var xhttp = new XMLHttpRequest();
+        xhttp.open("POST", "/post/photo", true);
+        var data = new FormData();
+        var inputta = document.querySelector('input[type="file"]');
+        /** data.append('data', file, filename);**/
+        var file = inputta.files[0];
+            if (file.type == "image/jpeg") {
+               var ext = ".jpeg";
+            } else {
+               var ext = ".png";
+            }
+        var filename = `${now.getTime()}${ext}`;
+        data.append('data', image_base64);
+        data.append('to', document.getElementById('to').value);
+        data.append('maxhits', document.getElementById('maxhits').value);
+        data.append('maxtime', document.getElementById('maxtime').value);
+        xhttp.send(data);
+        upload_button.style.display = 'none';
+        image_input.style.display = 'none';
+        document.getElementById('selectfile').setAttribute('hidden', 'hidden');
+        document.querySelector('.bootstrap-filestyle').setAttribute('hidden', 'hidden');
+        upload_button.style.display = 'none';
+        spinner.style.display = 'block';
+        //document.getElementById('image_src').setAttribute('hidden', 'hidden');
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                spinner.style.display = 'none';
+                console.log(this.responseText);     
+                image_input.style.display = 'none';
+                shoutsettings.style.display = 'none';
+                if (navigator.share !== undefined) {
+                    showShareButton(this.responseText);
+                } else {
+                    //document.getElementById('spinner').setAttribute('hidden', 'hidden');
+                    document.getElementById('p1').innerHTML = this.responseText.substring(0,32) + '...';
+                }
+                document.getElementById('p2').innerHTML = '<img src=/get_qrimg/photo/' + this.responseText.slice(this.responseText.lastIndexOf('/') + 1) + ' width=200px>';
+                document.getElementById('to').setAttribute('hidden', 'hidden');
+                document.getElementById('mobile-photo-preview').setAttribute('hidden', 'hidden');
+                document.getElementById('data-to-copy').removeAttribute('hidden');
+                document.getElementById('data-to-copy').setAttribute('data-copy', this.responseText);
+                document.getElementById('recordings').setAttribute('hidden', 'hidden');
+            }
+        };
+        });
+{% else %}
+
+let spinner = document.querySelector("#spinner");
+let camera_button = document.querySelector("#start-camera");
+let video = document.querySelector("#video-box");
+let click_button = document.querySelector("#clickphoto");
+let upload_button = document.querySelector("#uploadphoto");
+let canvas = document.querySelector("#canvas");
+let dataurl = document.querySelector("#dataurl");
+
+camera_button.addEventListener('click', async function() {
+    let stream = null;
+    try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+    catch(error) {
+    	alert(error.message);
+    	return;
+    }
+    video.srcObject = stream;
+    video.style.display = 'block';
+    camera_button.style.display = 'none';
+    click_button.style.display = 'block';
+});
+
+click_button.addEventListener('click', function() {
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    let image_data_url = canvas.toDataURL('image/jpeg');
+    dataurl.value = image_data_url;
+    video.style.display = 'none';
+    video.pause();
+    video.currentTime = 0;
+    click_button.style.display = 'none';
+    upload_button.style.display = 'block';
+});
+
+upload_button.addEventListener('click', function() {
+        var image_base64 = document.getElementById('dataurl').value
+        var xhttp = new XMLHttpRequest();
+        xhttp.open("POST", "/post/photo", true);
+        var filename = `${now.getTime()}.jpeg`;
+        var data = new FormData();
+        let file = null;
+        let blob = document.querySelector("#canvas").toBlob(function(blob) {
+				file = new File([blob], filename, { type: 'image/jpeg' });
+			}, 'image/jpeg');
+/**        data.append('data', image_base64, filename); **/
+        data.append('data', image_base64);
+        data.append('to', document.getElementById('to').value);
+        data.append('maxhits', document.getElementById('maxhits').value);
+        data.append('maxtime', document.getElementById('maxtime').value);
+        xhttp.send(data);
+        upload_button.style.display = 'none';
+        spinner.style.display = 'block';
+        document.getElementById('spinner').removeAttribute('hidden');
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                console.log(this.responseText);     
+                spinner.style.display = 'none';
+                shoutsettings.style.display = 'none';
+                if (navigator.share !== undefined) {
+                    showShareButton(this.responseText);
+                } else {
+                    document.getElementById('spinner').setAttribute('hidden', 'hidden');
+                    document.getElementById('p1').innerHTML = this.responseText.substring(0,32) + '...';
+                }
+                document.getElementById('p2').innerHTML = '<img src=/get_qrimg/photo/' + this.responseText.slice(this.responseText.lastIndexOf('/') + 1) + ' width=200px>';
+                document.getElementById('to').setAttribute('hidden', 'hidden');
+                document.getElementById('canvas').setAttribute('hidden', 'hidden');
+                document.getElementById('video-box').setAttribute('hidden', 'hidden');
+                document.getElementById('data-to-copy').removeAttribute('hidden');
+                document.getElementById('data-to-copy').setAttribute('data-copy', this.responseText);
+                document.getElementById('recordings').setAttribute('hidden', 'hidden');
+            }
+        };
+        });
+
+{% endif %}
+
+
+function showShareButton(shouthash) {
+  document.getElementById('spinner').setAttribute('hidden', 'hidden');
+  const btn = document.getElementById('share');
+  const title = document.title;
+  const text = "Check this photo message!";
+  const url = shouthash;
+  btn.removeAttribute('hidden');
+  btn.onclick = () => {
+    if (navigator.share !== undefined) {
+      navigator
+        .share({
+          title,
+          text,
+          url
+        })
+        .then(() => console.log("Shared!"))
+        .catch(err => console.error(err));
+    } else {
+      //window.location = `mailto:?subject=${title}&body=${text}%0A${url}`;
+      console.log("no share feature here!");
+      btn.setAttribute('hidden', 'hidden');
+    }
+  };
+  return btn;
+}
+
+function copyToClipboard(text, el) {
+  var copyTest = document.queryCommandSupported('copy');
+  var elOriginalText = el.attr('data-original-title');
+  if (copyTest === true) {
+    var copyTextArea = document.createElement("textarea");
+    copyTextArea.value = text;
+    document.body.appendChild(copyTextArea);
+    copyTextArea.select();
+    try {
+      var successful = document.execCommand('copy');
+      var msg = successful ? 'Copied!' : 'Whoops, not copied!';
+      el.attr('data-original-title', msg).tooltip('show');
+    } catch (err) {
+      console.log('Oops, unable to copy');
+    }
+    document.body.removeChild(copyTextArea);
+    el.attr('data-original-title', elOriginalText);
+  } else {
+    // Fallback if browser doesn't support .execCommand('copy')
+    window.prompt("Copy to clipboard: Ctrl+C or Command+C, Enter", text);
+  }
+}
+
+$(document).ready(function() {
+  $('.js-tooltip').tooltip();
+  $('.js-copy').click(function() {
+    var text = $(this).attr('data-copy');
+    var el = $(this);
+    copyToClipboard(text, el);
+  });
+  $('[data-toggle="form-tooltip"]').tooltip();
+});
+
+</script>
+
+{% endblock %}
+

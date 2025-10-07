@@ -1,0 +1,17 @@
+{
+            "DEBUG": "True",
+            "MAX_CONTENT-PATH": 1000000000,
+            "S3_ENDPOINT_URL": "http://1.1.1.2:9000",
+            "S3_ACCESS_KEY": "FakeS3access_keyvJHW",
+            "S3_SECRET_KEY": "fakesecretS3KEYE81RHt5tr8SQZfr9AwhIgTSDnAf",
+            "S3_BUCKET": "burnafterit",
+            "INFLUX_ENDPOINT_URL": "https://eu-central-1-1.aws.cloud2.influxdata.com",
+            "INFLUX_TOKEN": "Fake_influx_token3Udt7phseCG6xMon9l-E8RA==",
+            "INFLUX_ORG": "F4k30rG6ea",
+            "INFLUX_BUCKET": "burnafterit",
+            "REDIS_USER":"",
+            "REDIS_PASS":"smammella",
+            "REDIS_HOST":"1.2.8.1",
+            "REDIS_PORT":"8098"
+}
+

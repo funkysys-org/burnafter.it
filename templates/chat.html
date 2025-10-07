@@ -1,0 +1,70 @@
+{% set active_page = 'chat' %}
+{% extends 'base5.html' %}
+{% block title %} Audio Chat {% endblock %}
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+</br><p>
+<div class="container" >
+<h2 style="text-align: center;">Ephemeral Secure Chat</h2>
+<form action="/chat/{{chathash}}" method="get">
+	<div style="padding: 20px; text-align: center;">
+<div id=shoutsettings style="display: block;">
+ <button type="button" class="btn btn-danger btn-lg">&#8734; posts views</button> <p></p>
+ <button type="button" class="btn btn-danger btn-lg">Posts expire in 5 minutes</button> <p></p>
+<!--
+<select name="maxxhits" class="selectpicker show-tick" data-style="btn-danger btn-lg" id="maxxhits" title="Views:" data-header="Views.." required="true">
+  <option value="9999999999999" class="bigselect" selected> 	&#8734; message views</option>
+</select> 
+</br><p></p>
+<select name="maxxtime" class="selectpicker show-tick" data-style="btn-danger btn-lg" id="maxxtime" title="Expires in:" data-header="Expires in.." required="true">
+  <option value="5" class="bigselect" selected>5 min messages</option>
+  <option value="1440" class="bigselect" disabled>Expires in 24H</option>
+  <option value="720" class="bigselect" disabled>Expires in 12H</option>
+  <option value="240" class="bigselect" disabled>Expires in 4H</option>
+  <option value="180" class="bigselect" disabled>Expires in 3H</option>
+  <option value="120" class="bigselect" disabled>Expires in 2H</option>
+  <option value="60" class="bigselect" disabled>Expires in 1H</option>
+  <option value="30" class="bigselect" disabled>Expires in 30m</option>
+</select> </br>
+<input type=hidden name=maxhits id="maxhits" value="999999999">
+<input type=hidden name=maxtime id="maxtime" value="5">
+</div>
+</br><p></p>
+-->
+<!--<a href="/chat/{{chathash}}" style="color: white; text-decoration: none !important;">-->
+<span style="text-align: left;">Start Ephemeral Chat</span><br><p></br> 
+ <button type=submit class="btn border-0">
+                 <span style="text-align: right; color: white;" id="composesequence">
+                    <i class="fa fa-user-secret fa-5x" aria-hidden="true" style="padding: 4px;"></i>
+                </span>
+</button>
+        </div>
+</form>
+</div>
+<!-- <small>Previews from instant messaging app "may" be blocked ( accepted user agents list here )</small>-->
+
+    <script>
+        var icons = ['user-secret', 'comments', 'share-alt'];
+        textSequence(0);
+        function textSequence(i) {
+            if (icons.length > i) {
+                setTimeout(function() {
+                    document.getElementById("composesequence").innerHTML = '<i class="fa fa-' + icons[i]  +' fa-5x" aria-hidden="true"></i>';
+                    textSequence(++i);
+                }, 1500); // 1,5 second (in milliseconds)
+            } else if (icons.length == i) { // Loop
+                textSequence(0);
+            }
+        }
+    </script>
+</body>
+</html>
+{% endblock %}
+
+
+
+
+
+
+
+

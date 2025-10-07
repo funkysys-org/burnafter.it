@@ -1,0 +1,141 @@
+{% extends 'base5.html' %}
+{% block title %} TXT Shout {% endblock %}
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+<div class="container" >
+<center>
+          <form action='/post/text' method='POST'>
+<span id=spinner></span>
+{% if data %}
+{% set url = data.split('/') %}
+              <div class="btn-group">
+                  <button type="button" class="btn btn-lg btn-copy js-tooltip js-copy border-0" id="data-to-copy" data-toggle="tooltip" data-placement="bottom" data-copy="{{ data }}" title="Copy" style="color: white; display: block;"><span id="p1">{{ data[0:31] }}..</span></button></br>
+		  <button type="button" id="share" style='display: block; visibility: hidden' hidden><span class="fa fa-share-alt fa-5x" aria-hidden="true"></span></button>
+              </div>
+		<p id="p2" align=center><img src="/get_qrimg/text/{{ url[4] }}" width="200px"></p>
+{% else %}
+<div id=shoutsettings style="display: block; align: center; text-align: center;">
+        <div style="padding: 20px; text-align: center;">
+<select name="maxhits" class="selectpicker show-tick" data-style="btn-danger btn-lg" id="maxhits" title="Max Views:" data-header="Max Views" required="true">
+  <option value="1" class="bigselect" selected>1 view</option>
+  <option value="2" class="bigselect">2 views</option>
+  <option value="3" class="bigselect">3 views</option>
+  <option value="4" class="bigselect">4 views</option>
+  <option value="5" class="bigselect">5 views</option>
+  <option value="10" class="bigselect">10 views</option>
+  <option value="50" class="bigselect">50 views</option>
+  <option value="100" class="bigselect">100 views</option>
+  <option value="999999999" class="bigselect">&#8734; Views</option>
+</select> </br><p></br>
+<select name="maxtime" class="selectpicker show-tick" data-style="btn-danger btn-lg" id="maxtime" title="Expires in:" data-header="Expires in.." required="true">
+  <option value="1440" class="bigselect" selected>Expires in 24H</option>
+  <option value="600" class="bigselect">Expires in 10H</option>
+  <option value="240" class="bigselect">Expires in 4H</option>
+  <option value="180" class="bigselect">Expires in 3H</option>
+  <option value="120" class="bigselect">Expires in 2H</option>
+  <option value="60" class="bigselect">Expires in 1H</option>
+  <option value="30" class="bigselect">Expires in 30m</option>
+  <option value="10" class="bigselect">Expires in 10m</option>
+  <option value="5" class="bigselect">Expires in 5m</option>
+</select> </br><p>
+
+
+
+
+
+<!--
+<input type=hidden id=maxtime name=maxtime value="{{ maxtime }}">
+<input type=hidden id=maxhits name=maxhits value="{{ maxhits }}">-->
+</div>
+        <p></p>
+	<div style="text-align: center;">
+              <textarea placeholder="Remember, be nice!" name=data id="data" cols=32 rows=8></textarea></br>
+	      <button type="submit" id="submit"><span class="fa fa-plus-square fa-3x" alt=burn></span></button>
+				<!--<center><button type="button" id="send" hidden><span class="fa fa-cloud-upload fa-5x" aria-hidden="true"></span></button></center>
+				<center><button type="button" id="share" hidden><span class="fa fa-share-alt fa-5x" aria-hidden="true"></span></button></center>
+				<center><span class="fa fa-podcast fa-5x" aria-hidden="true" id=record style="visibility: hidden"></span></center>-->
+              <input type=hidden name=to id="to" value="public">
+          </form>
+        </div>
+{% endif %}
+</center>
+</div>
+    <script>
+function showShareButton(shouthash) {
+  document.getElementById('spinner').setAttribute('hidden', 'hidden');
+  const btn = document.getElementById('share');
+  share.style.display = 'block';
+  const title = document.title;
+  const text = "Check this message!";
+  const url = shouthash;
+  btn.onclick = () => {
+    if (navigator.share !== undefined) {
+      navigator
+        .share({
+          title,
+          text,
+          url
+        })
+        .then(() => console.log("Shared!"))
+        .catch(err => console.error(err));
+      btn.removeAttribute('hidden');
+    } else {
+      //window.location = `mailto:?subject=${title}&body=${text}%0A${url}`;
+      console.log("no share feature here!");
+      btn.setAttribute('hidden', 'hidden');
+      share.style.display = 'none';
+    }
+  };
+  return btn;
+}
+
+
+function copyToClipboard(text, el) {
+  var copyTest = document.queryCommandSupported('copy');
+  var elOriginalText = el.attr('data-original-title');
+
+  if (copyTest === true) {
+    var copyTextArea = document.createElement("textarea");
+    copyTextArea.value = text;
+    document.body.appendChild(copyTextArea);
+    copyTextArea.select();
+    try {
+      var successful = document.execCommand('copy');
+      var msg = successful ? 'Copied!' : 'Whoops, not copied!';
+      el.attr('data-original-title', msg).tooltip('show');
+    } catch (err) {
+      console.log('Oops, unable to copy');
+    }
+    document.body.removeChild(copyTextArea);
+    el.attr('data-original-title', elOriginalText);
+  } else {
+    // Fallback if browser doesn't support .execCommand('copy')
+    window.prompt("Copy to clipboard: Ctrl+C or Command+C, Enter", text);
+  }
+}
+
+$(document).ready(function() {
+  // Tooltips
+  // Requires Bootstrap 3 for functionality
+  $('.js-tooltip').tooltip();
+  // Grab any text in the attribute 'data-copy' and pass it to the 
+  // copy function
+  $('.js-copy').click(function() {
+    var text = $(this).attr('data-copy');
+    var el = $(this);
+    copyToClipboard(text, el);
+  });
+  $('[data-toggle="form-tooltip"]').tooltip();
+{% if data %}
+  if (navigator.share !== undefined) {
+        showShareButton('{{ data }}');
+  } else {
+      //$('#spinner').setAttribute('hidden', 'hidden');
+      $('#p1').innerHTML = '{{ data[0:31] }} ...';
+      $('#share').style.display = 'none';
+  }
+
+{% endif %}
+});
+</script>
+{% endblock %}

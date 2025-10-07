@@ -1,0 +1,28 @@
+{% set active_page = 'message' %}
+{% extends 'base5.html' %}
+{% block title %} Shout {% endblock %}
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+</br><p>
+</br><p>
+<div class="container" >
+<h2 style="text-align: center;">Share Ephemeral Content</h2>
+<form action="/post" method="post">
+<input type="hidden" name="maxhits" value="1">
+<input type="hidden" name="maxtime" value="60">
+	<div style="padding: 20px; text-align: center;">
+<button type=submit class="btn shadow-none border-0" name="mediatype" value="audio">
+         <i class="fa fa-microphone fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
+</button>
+<button type=submit class="btn shadow-none border-0" name="mediatype" value="text">
+         <i class="fa fa-pencil fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
+</button>
+<button type=submit class="btn shadow-none border-0" name="mediatype" value="photo" disabled>
+         <i class="fa fa-camera-retro fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
+</button>
+<button type=submit class="btn shadow-none border-0" name="mediatype" value="video" disabled>
+         <i class="fa fa-video-camera fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
+</button>
+</form>
+</div>
+{% endblock %}

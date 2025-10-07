@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+
+{% block title %} User Profile {% endblock %}
+
+{% block content %}
+        <div style="color: white; background-color: rgba(0, 0, 0, 0.6);margin-top: 70px; padding: 10px;">
+    <h2> User Profile </h2>
+	<p>
+	Username: {{ username }} <br>
+	Email: {{ email }} <br>
+	</p>
+	<p>Shouts</p>
+<!-- BOOKMARK -->
+{% for shout in shouts %}
+{{ shout._value }}  === {{ shout._time }} </br>
+  {% endfor %} <br>
+
+</div>
+{% endblock %}

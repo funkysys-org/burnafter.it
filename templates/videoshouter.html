@@ -1,0 +1,218 @@
+{% extends 'base5.html' %}
+{% block title %} BurnAfter.it - Video Shout {% endblock %}
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+<div class="container">
+<p></p>
+<div id=shoutsettings style="display: block; align: center; text-align: center;">
+<input type=hidden id=maxtime name=maxtime value="{{ maxtime }}">
+<input type=hidden id=maxhits name=maxhits value="{{ maxhits }}">
+</div>
+
+</br><p></p>
+	</br><p></p>
+	<div style="text-align: center;">
+			        <center><button type="button" id="mic"><span class="fa fa-video-camera fa-5x"></span></button>
+				<center><button type="button" id="spinner" hidden><span class="fa fa-spinner fa-pulse fa-5x fa-fw" aria-hidden="true"></span></button></center>
+				<center><button type="button" id="record" hidden><span class="fa fa-video-camera fa-pulse fa-5x recording" aria-hidden="true"></span></button></center>
+				<center><button type="button" id="send" hidden><span class="fa fa-cloud-upload fa-5x" aria-hidden="true"></span></button></center>
+				<center><button type="button" id="share" hidden><span class="fa fa-share-alt fa-5x" aria-hidden="true"></span></button></center>
+				<center><span class="fa fa-podcast fa-5x" aria-hidden="true" id=record style="visibility: hidden"></span></center>
+                                <input type=hidden name=to id="to" value="public">
+				 <div id="videolivebox"></div>
+		                <div class="btn-group">
+			            <button type="button" class="btn btn-lg btn-copy js-tooltip js-copy border-0" id="data-to-copy" data-toggle="tooltip" data-placement="bottom" data-copy="d" title="Copy" style="display: block; color: white;" hidden><span id="p1"></span></button>
+		                </div>
+      </div>
+           <p id="p1" align=center>&nbsp;</p>
+<br><p></p>
+      <p id="p2" align=center>&nbsp;</p>
+
+           <center><ul id="recordings" style="text-align: center;"></ul></center>
+      </div>
+</div>
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        const getMic = document.getElementById('mic');
+        const recordButton = document.getElementById('record');
+        const postButton = document.getElementById('send');
+        const list = document.getElementById('recordings');
+        const shoutsettings = document.querySelector("#shoutsettings");
+
+        if ('MediaRecorder' in window) {
+          getMic.addEventListener('click', async () => {
+            getMic.setAttribute('hidden', 'hidden');
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
+                video: true
+              });
+              const mimeType = 'video/webm';
+              const videolivebox = document.getElementById('videolivebox');
+              const videolive = document.createElement('video');
+              //videolive.setAttribute('src', stream);
+              videolive.autoplay = true;
+              videolive.controls = false;
+              videolive.setAttribute('width', '240');
+              videolive.setAttribute('controlslist', 'nodownload')
+              videolive.srcObject = stream;
+              videolive.id = 'videolive';
+              //videolivebox.innerHTML = videolive;
+              videolivebox.append(videolive)
+              let chunks = [];
+              const recorder = new MediaRecorder(stream, { type: 'video/webm' });
+              recorder.addEventListener('dataavailable', event => {
+                if (typeof event.data === 'undefined') return;
+                if (event.data.size === 0) return;
+                chunks.push(event.data);
+              });
+              recorder.addEventListener('stop', () => {
+                const recording = new Blob(chunks, {
+                  type: mimeType
+                });
+                renderRecording(recording, list);
+                chunks = [];
+              });
+                if (recorder.state === 'inactive') {
+                  recorder.start();
+                  recordButton.removeAttribute('hidden');
+        //          recordButton.innerText = 'Stop';
+		  recordButton.addEventListener('click', () => {
+                  recorder.stop();
+                  recordButton.setAttribute('hidden', 'hidden');
+	          postButton.removeAttribute('hidden');
+                  videolivebox.setAttribute('hidden', 'hidden');
+                  videolive.pause();
+                  videolive.currentTime = 0;
+
+                  });
+                }
+            } catch {
+              renderError(
+                'You denied access to the microphone so audio recording will not work.'
+              );
+            }
+          });
+        } else {
+          renderError(
+            "Sorry, your browser doesn't support the MediaRecorder API, so audio recording will not work."
+          );
+        }
+
+      });
+
+             
+      function renderError(message) {
+        const main = document.querySelector('main');
+        main.innerHTML = `<div class="error"><p>${message}</p></div>`;
+      }
+
+function showShareButton(shouthash) {
+  document.getElementById('spinner').setAttribute('hidden', 'hidden');
+  const btn = document.getElementById('share');
+  const title = document.title;
+  const text = "Check this video message!";
+  const url = shouthash;
+  btn.removeAttribute('hidden');
+  btn.onclick = () => {
+    if (navigator.share !== undefined) {
+      navigator
+        .share({
+          title,
+          text,
+          url
+        })
+        .then(() => console.log("Shared!"))
+        .catch(err => console.error(err));
+    } else {
+      //window.location = `mailto:?subject=${title}&body=${text}%0A${url}`;
+      console.log("no share feature here!");
+      btn.setAttribute('hidden', 'hidden');
+    }
+  };
+  return btn;
+}
+
+function renderRecording(blob, list) {
+  const postButton = document.getElementById('send');
+  const now = new Date();
+  const blobUrl = URL.createObjectURL(blob);
+  const li = document.createElement('li');
+  const video = document.createElement('video');
+  video.setAttribute('src', blobUrl);
+  video.setAttribute('controls', 'controls');
+  video.setAttribute('width', '320');
+  video.setAttribute('controlslist', 'nodownload')
+  li.appendChild(video);
+  list.appendChild(li);
+  //on rec.stop() 
+  console.log(blob);
+  postButton.addEventListener('click', () => {
+  	var xhttp = new XMLHttpRequest();
+  	xhttp.open("POST", "/post/video", true);
+  	var filename = `${now.getTime()}.mp4`
+  	var data = new FormData();
+  	data.append('data', blob, filename);
+  	data.append('to', document.getElementById('to').value);
+  	data.append('maxhits', document.getElementById('maxhits').value);
+  	data.append('maxtime', document.getElementById('maxtime').value);
+  	xhttp.send(data);
+  	document.getElementById('send').setAttribute('hidden', 'hidden');
+  	document.getElementById('spinner').removeAttribute('hidden');
+  	xhttp.onreadystatechange = function() {
+  	    if (this.readyState == 4 && this.status == 200) {
+  		console.log(this.responseText);     
+  		postButton.setAttribute('hidden', 'hidden');
+                shoutsettings.style.display = 'none';
+                document.getElementById('p2').innerHTML = '<img src=/get_qrimg/video/' + this.responseText.slice(this.responseText.lastIndexOf('/') + 1) + ' width=200px>';
+                if (navigator.share !== undefined) {
+                    showShareButton(this.responseText);
+                } else {
+                    document.getElementById('spinner').setAttribute('hidden', 'hidden');
+                    document.getElementById('p1').innerHTML = this.responseText.substring(0,32) + '...';
+                }
+  		document.getElementById('to').setAttribute('hidden', 'hidden');
+  	        document.getElementById('data-to-copy').removeAttribute('hidden');
+  		document.getElementById('data-to-copy').setAttribute('data-copy', this.responseText);
+  		document.getElementById('recordings').setAttribute('hidden', 'hidden');
+  	    }
+  	};
+  	});
+ 
+}
+
+function copyToClipboard(text, el) {
+  var copyTest = document.queryCommandSupported('copy');
+  var elOriginalText = el.attr('data-original-title');
+
+  if (copyTest === true) {
+    var copyTextArea = document.createElement("textarea");
+    copyTextArea.value = text;
+    document.body.appendChild(copyTextArea);
+    copyTextArea.select();
+    try {
+      var successful = document.execCommand('copy');
+      var msg = successful ? 'Copied!' : 'Whoops, not copied!';
+      el.attr('data-original-title', msg).tooltip('show');
+    } catch (err) {
+      console.log('Oops, unable to copy');
+    }
+    document.body.removeChild(copyTextArea);
+    el.attr('data-original-title', elOriginalText);
+  } else {
+    // Fallback if browser doesn't support .execCommand('copy')
+    window.prompt("Copy to clipboard: Ctrl+C or Command+C, Enter", text);
+  }
+}
+
+$(document).ready(function() {
+  $('.js-tooltip').tooltip();
+  $('.js-copy').click(function() {
+    var text = $(this).attr('data-copy');
+    var el = $(this);
+    copyToClipboard(text, el);
+  });
+  $('[data-toggle="form-tooltip"]').tooltip();
+});
+</script>
+{% endblock %}

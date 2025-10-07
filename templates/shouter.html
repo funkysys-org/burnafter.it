@@ -1,0 +1,270 @@
+{% extends 'base5.html' %}
+{% block title %} {{ mediatype }} Shout {% endblock %}
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+<div class="container" >
+	<p></p>
+<!--		<input type=hidden id=maxtime name=maxtime value="{{ maxtime }}">
+		<input type=hidden id=maxhits name=maxhits value="{{ maxhits }}">-->
+		<input type=hidden name=to id="to" value="public">
+
+        <div style="padding: 20px; text-align: center;">
+<select name="maxhits" class="selectpicker show-tick" data-style="btn-danger btn-lg" id="maxhits" title="Max Views:" data-header="Max Views" required="true">
+  <option value="1" class="bigselect" selected>1 view</option>
+  <option value="2" class="bigselect">2 views</option>
+  <option value="3" class="bigselect">3 views</option>
+  <option value="4" class="bigselect">4 views</option>
+  <option value="5" class="bigselect">5 views</option>
+  <option value="10" class="bigselect">10 views</option>
+  <option value="50" class="bigselect">50 views</option>
+  <option value="100" class="bigselect">100 views</option>
+  <option value="999999999" class="bigselect">&#8734; Views</option>
+</select> </br><p></br>
+<select name="maxtime" class="selectpicker show-tick" data-style="btn-danger btn-lg" id="maxtime" title="Expires in:" data-header="Expires in.." required="true">
+  <option value="1440" class="bigselect" selected>Expires in 24H</option>
+  <option value="600" class="bigselect">Expires in 10H</option>
+  <option value="240" class="bigselect">Expires in 4H</option>
+  <option value="180" class="bigselect">Expires in 3H</option>
+  <option value="120" class="bigselect">Expires in 2H</option>
+  <option value="60" class="bigselect">Expires in 1H</option>
+  <option value="30" class="bigselect">Expires in 30m</option>
+  <option value="10" class="bigselect">Expires in 10m</option>
+  <option value="5" class="bigselect">Expires in 5m</option>
+</select> </br><p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	<p></p>
+{% if mediatype == "video" or mediatype == "audio" %}
+<div style="text-align: center;">
+			<center><button type="button" id="record-src-btn" class="btn border-0" style="color: white;">
+					<span class="fa fa-{% if mediatype == "audio" %}microphone{% else %}video-camera{% endif %} fa-5x"></span>
+				</button>
+				<button type="button" id="spinner" hidden class="btn border-0" style="color: white;"><span class="fa fa-spinner fa-pulse fa-5x fa-fw" aria-hidden="true"></span></button>
+{% if mediatype == "audio" %}
+				<button type="button" id="record" hidden class="btn btn-link border-0" style="color: white;"><span class="fa fa-microphone fa-5x recording" aria-hidden="true"></span></button>
+{% else %}
+				<button type="button" id="record" hidden class="btn btn-link border-0" style="color: white;"><span class="fa fa-video-camera fa-5x recording" aria-hidden="true"></span></button>
+{% endif %}
+				<button type="button" id="send" hidden class="btn btn-link border-0" style="color: white;"><span class="fa fa-cloud-upload fa-5x" aria-hidden="true"></span></button>
+				<button type="button" id="share" hidden class="btn btn-link border-0" style="color: white;"><span class="fa fa-share-alt fa-5x" aria-hidden="true"></span></button>
+				<span class="fa fa-podcast fa-5x" aria-hidden="true" id=record style="visibility: hidden"></span>
+			</center>
+  <div class="btn-group">
+	  <button type="button" class="btn btn-lg btn-copy js-tooltip js-copy border-0" id="data-to-copy" data-toggle="tooltip" data-placement="bottom" data-copy="d" title="Copy" style="color: white; display: block;" hidden>
+		<span id="p1"></span>
+	  </button>
+  </div>
+</div>
+      <p id="p2" align=center>&nbsp;</p>
+<br><p></p>
+      <p id="p1" align=center>&nbsp;</p>
+
+      <center><ul id="recordings" style="text-align: center;"></ul></center>
+</div>
+
+    <script>
+/// !!!! fuck yeah
+    window.addEventListener('DOMContentLoaded', () => {
+        const getMic = document.getElementById('record-src-btn');
+        const recordButton = document.getElementById('record');
+        const postButton = document.getElementById('send');
+        const list = document.getElementById('recordings');
+        if ('MediaRecorder' in window) {
+          getMic.addEventListener('click', async () => {
+            getMic.setAttribute('hidden', 'hidden');
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
+{% if mediatype == "audio" %}
+//add mediatype if statement here for video or not VIDEO!=AUDIO
+                video: false
+{% else %}
+                video: true
+{% endif %}
+              });
+{% if mediatype == "audio" %}
+//add mediatype if statement here for video or not VIDEO!=AUDIO
+              const mimeType = 'audio/webm';
+              const mimeStr = 'audio/x-wav';
+{% else %}
+//2 lines above for audio, lines below for video
+             const mimeType = 'video/webm';
+             const mimeStr = 'video/webm';
+              const videolivebox = document.getElementById('videolivebox');
+              const videolive = document.createElement('video');
+              //videolive.setAttribute('src', stream);
+              videolive.autoplay = true;
+              videolive.controls = false;
+              videolive.setAttribute('width', '240');
+              videolive.setAttribute('controlslist', 'nodownload')
+              videolive.srcObject = stream;
+              videolive.id = 'videolive';
+              //videolivebox.innerHTML = videolive;
+              videolivebox.append(videolive)
+{% endif %}
+              let chunks = [];
+
+              const recorder = new MediaRecorder(stream, { type: mimeStr });
+              recorder.addEventListener('dataavailable', event => {
+                if (typeof event.data === 'undefined') return;
+                if (event.data.size === 0) return;
+                chunks.push(event.data);
+              });
+              recorder.addEventListener('stop', () => {
+                const recording = new Blob(chunks, {
+                  type: mimeType
+                });
+                renderRecording(recording, list);
+                chunks = [];
+              });
+                if (recorder.state === 'inactive') {
+                  recorder.start();
+                  recordButton.removeAttribute('hidden');
+		  recordButton.addEventListener('click', () => {
+                  recorder.stop();
+                  recordButton.setAttribute('hidden', 'hidden');
+	          postButton.removeAttribute('hidden');
+//if video then
+{% if mediatype == "video" %}
+                  videolivebox.setAttribute('hidden', 'hidden');
+                  videolive.pause();
+                  videolive.currentTime = 0;
+{% endif %}
+
+                  });
+                }
+            } catch {
+              renderError("You denied access to the microphone so audio recording will not work.");
+            }
+          });
+        } else {
+          renderError("Sorry, your browser doesn't support the MediaRecorder API, so audio/video recording will not work.");
+        }
+      });
+             
+      function renderError(message) {
+        const main = document.querySelector('main');
+        main.innerHTML = `<div class="error"><p>${message}</p></div>`;
+      }
+
+function copyToClipboard(text, el) {
+  var copyTest = document.queryCommandSupported('copy');
+  var elOriginalText = el.attr('data-original-title');
+
+  if (copyTest === true) {
+    var copyTextArea = document.createElement("textarea");
+    copyTextArea.value = text;
+    document.body.appendChild(copyTextArea);
+    copyTextArea.select();
+    try {
+      var successful = document.execCommand('copy');
+      var msg = successful ? 'Copied!' : 'Whoops, not copied!';
+      el.attr('data-original-title', msg).tooltip('show');
+    } catch (err) {
+      console.log('Oops, unable to copy');
+    }
+    document.body.removeChild(copyTextArea);
+    el.attr('data-original-title', elOriginalText);
+  } else {
+    window.prompt("Copy to clipboard: Ctrl+C or Command+C, Enter", text);
+  }
+}
+
+function showShareButton(shouthash) {
+  document.getElementById('spinner').setAttribute('hidden', 'hidden');
+  const btn = document.getElementById('share');
+  const title = document.title;
+  const text = "Check this audio message!";
+  const url = shouthash;
+  btn.removeAttribute('hidden');
+  btn.onclick = () => {
+    if (navigator.share !== undefined) {
+      navigator
+        .share({
+          title,
+          text,
+          url
+        })
+        .then(() => console.log("Shared!"))
+        .catch(err => console.error(err));
+    } else {
+      //window.location = `mailto:?subject=${title}&body=${text}%0A${url}`;
+      console.log("no share feature here!");
+      btn.setAttribute('hidden', 'hidden');
+    }
+  };
+  return btn;
+}
+
+function renderRecording(blob, list) {
+  const postButton = document.getElementById('send');
+  const now = new Date();
+  const blobUrl = URL.createObjectURL(blob);
+  const li = document.createElement('li');
+{% if mediatype == "audio" %}
+  const audio = document.createElement('audio');
+  audio.setAttribute('src', blobUrl);
+  audio.setAttribute('controls', 'controls');
+  li.appendChild(audio);
+
+//if video then
+{% else %}
+  const video = document.createElement('video');
+  video.setAttribute('src', blobUrl);
+  video.setAttribute('controls', 'controls');
+  video.setAttribute('width', '320');
+  video.setAttribute('controlslist', 'nodownload')
+  li.appendChild(video);
+{% endif %}
+  list.appendChild(li);
+  console.log(blob);
+  postButton.addEventListener('click', () => {
+  	var xhttp = new XMLHttpRequest();
+  	xhttp.open("POST", "/post/{{ mediatype }}", true);
+  	var filename = `${now.getTime()}.wav`
+  	var data = new FormData();
+  	data.append('data', blob, filename);
+  	data.append('to', document.getElementById('to').value);
+  	data.append('maxhits', document.getElementById('maxhits').value);
+  	data.append('maxtime', document.getElementById('maxtime').value);
+  	xhttp.send(data);
+  	document.getElementById('send').setAttribute('hidden', 'hidden');
+  	document.getElementById('spinner').removeAttribute('hidden');
+  	xhttp.onreadystatechange = function() {
+  	    if (this.readyState == 4 && this.status == 200) {
+  		console.log(this.responseText);     
+  		postButton.setAttribute('hidden', 'hidden');
+                document.getElementById('p2').innerHTML = '<img src=/get_qrimg/{{ mediatype }}/' + this.responseText.slice(this.responseText.lastIndexOf('/') + 1) + ' width=200px>';
+                if (navigator.share !== undefined) {
+                    showShareButton(this.responseText);
+		} else {
+                    document.getElementById('spinner').setAttribute('hidden', 'hidden');
+          	    document.getElementById('p1').innerHTML = this.responseText.substring(0,32) + '...';
+                }
+  	        document.getElementById('data-to-copy').removeAttribute('hidden');
+  		document.getElementById('data-to-copy').setAttribute('data-copy', this.responseText);
+  		document.getElementById('recordings').setAttribute('hidden', 'hidden');
+  	    }
+  	};
+  	});
+}
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,248 @@
+{% extends 'base5.html' %}
+{% block title %} BurnAfterIt Audio Chat {% endblock %}
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+<!--<div style="margin-bottom: 70px;">-->
+<div style="margin-bottom: 70px !important;">
+<div id="qrmodal" class="modal fade" role="dialog">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" style="float: right;"></button>
+<!--<span aria-hidden="true">&nbsp;</span><span class="sr-only">&nbsp;</span></button>-->
+        <h4 class="modal-title">Chat {{ chathash }}</h4>
+      </div>
+      <div class="modal-body" style="text-align: center;" >
+        <img src="/buildchat_qrurl/{{ chathash }}" width="240px">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+      </div>
+    </div><!-- /.modal-content -->
+  </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+<div id="helpinfo" class="modal fade" role="dialog">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" style="float: right;"></button>
+<!--<span aria-hidden="true">&nbsp;</span><span class="sr-only">&nbsp;</span></button>-->
+        <h4 class="modal-title">Chat Help</h4>
+      </div>
+      <div class="modal-body" style="text-align: center; color: black;" >
+<h2>Help</h2>
+<p>
+loren ipsum
+<p>
+loren ipsum
+<p>
+loren ipsum
+<p>
+loren ipsum
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+      </div>
+    </div><!-- /.modal-content -->
+  </div><!-- /.modal-dialog -->
+</div><!-- /.modal -->
+
+
+
+
+<button type="button" class="btn btn-link border-0" style="color: white;" id="share" hidden><span class="fa-solid fa-share-alt fa-2x" aria-hidden="true"></span></button>
+<button type="button" class="btn btn-link border-0" style="color: white;" id="qrcode" data-toggle="modal" data-target="#qrmodal"><span class="fa-solid fa-qrcode fa-2x" aria-hidden="true"></span></button>
+<button type="button" class="btn btn-link border-0" style="color: white;" id="helpinfo" data-toggle="modal" data-target="#helpinfo">
+<i class="fa-solid fa-circle-question fa-2x"></i>
+</button>
+
+
+</br><p>
+<input type=hidden name=chathash id="chathash" value="{{ chathash }}">
+
+		<audio id="recordings" style="visibility: hidden;"></audio>
+		<p></p>
+                <div class="list-group list-group-mine" id="playlist">
+			<!-- for shout in shouts | reverse %} -->
+                {% for shout in shouts %}
+		<a href="/streaming/audio/{{ shout._value }}" class="list-group-item list-group-item-action list-group-item-success">
+		{{ shout._time.strftime('%Y-%m-%d %H:%M:%S') }} <!--<span class="badge badge-secondary badge-succes" style="font-size: 1.1em;">{{ shout.user }}</span>-->
+                    </a>
+                {% endfor %}
+                </div>
+</div>
+<!--<div class="footer row">-->
+
+<div class="nav-navbar fixed-bottom navbar-dark">
+        <div >
+                <input type=hidden name=to id="to" value="public">
+                <div class="list-group-item-heading">
+                    <button type="button" id="mic" class="btn btn-link border-0" style="color: white; float: left"><span class="fa-solid fa-microphone fa-3x" aria-hidden="true"></span></button>
+                    <button type="button" id="spinner" class="btn btn-link border-0" hidden style="color: white; float: left"><span class="fa fa-spinner fa-pulse fa-2x fa-fw" aria-hidden="true"></span></button>
+                    <button type="button" id="record" class="btn btn-link border-0" hidden style="color: white; float: left"><span class="fa fa-microphone fa-2x recording" aria-hidden="true"></span></button>
+                    <button type="button" id="send" class="btn btn-link border-0" hidden style="color: white; float: left"><span class="fa fa-cloud-upload fa-2x" aria-hidden="true"></span></button>
+		    <button id="listenrec" onclick="document.getElementById('recordings').play()" class="btn btn-link" hidden style="color: white; float: left"><span class="fa fa-play-circle fa-2x"></span></button>
+ 		    <button id="playPause" class="btn btn-link border-0" style="color: white; float: right;"> 
+ 	                 <span id="play"><i class="fa fa-play-circle fa-3x">&nbsp;</i></span>
+                         <span id="pause" style="display: none"><i class="fa fa-pause-circle fa-3x">&nbsp;</i></span>
+		    </button>
+		</div>
+	</div>
+		<div align=center id="waveform" style="margin: 4px 4px 4px 4px; width: 250px;overflow-x: hidden; overflow-y: hidden;"></div>
+
+</div>
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        const getMic = document.getElementById('mic');
+        const recordButton = document.getElementById('record');
+        const postButton = document.getElementById('send');
+        const list = document.getElementById('recordings');
+        if ('MediaRecorder' in window) {
+          getMic.addEventListener('click', async () => {
+            getMic.setAttribute('hidden', 'hidden');
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
+                video: false
+              });
+              const mimeType = 'audio/webm';
+              let chunks = [];
+              const recorder = new MediaRecorder(stream, { type: 'audio/x-wav' });
+              recorder.addEventListener('dataavailable', event => {
+                if (typeof event.data === 'undefined') return;
+                if (event.data.size === 0) return;
+                chunks.push(event.data);
+              });
+              recorder.addEventListener('stop', () => {
+                const recording = new Blob(chunks, {
+                  type: mimeType
+                });
+                renderRecording(recording, list);
+                chunks = [];
+              });
+                if (recorder.state === 'inactive') {
+                  recorder.start();
+                  recordButton.removeAttribute('hidden');
+		  recordButton.addEventListener('click', () => {
+                  recorder.stop();
+                  recordButton.setAttribute('hidden', 'hidden');
+	          postButton.removeAttribute('hidden');
+  	          //document.getElementById('playPause').setAttribute('hidden', 'hidden');
+                  });
+                }
+            } catch {
+              renderError(
+                'You denied access to the microphone so audio recording will not work.'
+              );
+            }
+          });
+        } else {
+          renderError(
+            "Sorry, your browser doesn't support the MediaRecorder API, so audio recording will not work."
+          );
+        }
+      });
+             
+      function renderError(message) {
+        const main = document.querySelector('main');
+        main.innerHTML = `<div class="error"><p>${message}</p></div>`;
+      }
+
+function renderRecording(blob, list) {
+  //document.getElementById('send').setAttribute('hidden', 'hidden');
+  //document.getElementById('recordings').removeAttribute('hidden');
+  //document.getElementById("p1").innerHTML = this.responseText.substring(0,32) + '...';;
+  //showShareButton(this.responseText);
+  const postButton = document.getElementById('send');
+  const now = new Date();
+  const blobUrl = URL.createObjectURL(blob);
+  const audio = document.getElementById('recordings');
+  audio.setAttribute('src', blobUrl);
+  document.getElementById('recordings').removeAttribute('hidden');
+  document.getElementById('listenrec').removeAttribute('hidden');
+  console.log(blob);
+  postButton.addEventListener('click', () => {
+  	var xhttp = new XMLHttpRequest();
+  	xhttp.open("POST", "/chat/post/audio", true);
+  	var filename = `${now.getTime()}.wav`
+  	var data = new FormData();
+  	data.append('data', blob, filename);
+  	data.append('to', document.getElementById('to').value);
+  	data.append('chathash', document.getElementById('chathash').value);
+  	data.append('maxhits', '9999999999');
+  	data.append('maxtime', '5');
+  	xhttp.send(data);
+  	document.getElementById('send').setAttribute('hidden', 'hidden');
+  	document.getElementById('listenrec').setAttribute('hidden', 'hidden');
+  	document.getElementById('spinner').removeAttribute('hidden');
+  	xhttp.onreadystatechange = function() {
+  	    if (this.readyState == 4 && this.status == 200) {
+  		console.log(this.responseText);     
+  		postButton.setAttribute('hidden', 'hidden');
+		history.go(0);
+  	    }
+  	};
+  });
+}
+
+function showShareButton() {
+  const btn = document.getElementById('share');
+  btn.removeAttribute('hidden');
+  const title = document.title;
+  const text = "Burnafter.it Chat Link";
+  const url = window.location.href;
+  btn.onclick = () => {
+    if (navigator.share !== undefined) {
+      navigator
+        .share({
+          title,
+          text,
+          url
+        })
+        .then(() => console.log("Shared!"))
+        .catch(err => console.error(err));
+    } else {
+      window.location = `mailto:?subject=${title}&body=${text}%0A${url}`;
+    }
+  };
+  return btn;
+}
+
+function copyToClipboard(text, el) {
+  var copyTest = document.queryCommandSupported('copy');
+  var elOriginalText = el.attr('data-original-title');
+
+  if (copyTest === true) {
+    var copyTextArea = document.createElement("textarea");
+    copyTextArea.value = text;
+    document.body.appendChild(copyTextArea);
+    copyTextArea.select();
+    try {
+      var successful = document.execCommand('copy');
+      var msg = successful ? 'Copied!' : 'Whoops, not copied!';
+      el.attr('data-original-title', msg).tooltip('show');
+    } catch (err) {
+      console.log('Oops, unable to copy');
+    }
+    document.body.removeChild(copyTextArea);
+    el.attr('data-original-title', elOriginalText);
+  } else {
+    window.prompt("Copy to clipboard: Ctrl+C or Command+C, Enter", text);
+  }
+}
+
+//$(document).ready(function() {
+  showShareButton();
+//  $('.qrcode').click(function() {
+//        $('.modal').modal({ keyboard: false,
+//                           show: true
+//        });
+//        // Jquery draggable
+//        $('.modal-dialog').draggable({
+//            handle: ".modal-header"
+//        });
+//  });
+//});
+</script>
+{% endblock %}
+

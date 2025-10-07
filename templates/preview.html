@@ -1,0 +1,23 @@
+{% extends 'base5.html' %}
+{% block title %} {% endblock %}
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+</br><p>
+</br><p>
+<div class="container" >
+<center>
+<a href="/stream_any/{{ shouttype }}/{{ shouthash }}?valid=1" style="color: white;"><i class="fa fa-eye fa-3x" aria-hidden="true" style="padding: 4px;"></i></a>
+<br>
+<p>
+ <img src="/get_qrimg/{{ shouttype }}/{{ shouthash }}" width="240px">
+</center>
+</div>
+{% endblock %}
+
+
+
+
+
+
+
+

@@ -1,0 +1,58 @@
+{% set active_page = 'message' %}
+{% extends 'base5.html' %}
+{% block title %} Shout {% endblock %}
+<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
+{% block content %}
+</br><p>
+</br><p>
+<div class="container" >
+<h2 style="text-align: center;">Share Ephemeral Content</h2>
+<form action="/post" method="post">
+<input type="hidden" name="maxhits" value="1">
+<input type="hidden" name="maxtime" value="60">
+<button type=submit class="btn shadow-none border-0" name="mediatype" value="audio">
+         <i class="fa fa-microphone fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
+</button>
+<button type=submit class="btn shadow-none border-0" name="mediatype" value="text">
+         <i class="fa fa-pencil fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
+</button>
+<button type=submit class="btn shadow-none border-0" name="mediatype" value="photo" disabled>
+         <i class="fa fa-camera-retro fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
+</button>
+<button type=submit class="btn shadow-none border-0" name="mediatype" value="video" disabled>
+         <i class="fa fa-video-camera fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
+</button>
+<!--<form action="/post" method="post">
+	<div style="padding: 20px; text-align: center;">
+<select name="maxhits" class="selectpicker show-tick" data-style="btn-danger btn-lg" id="maxhits" title="Max Views:" data-header="Max Views" required="true">
+  <option value="1" class="bigselect" selected>1 view</option>
+  <option value="2" class="bigselect">2 views</option>
+  <option value="3" class="bigselect">3 views</option>
+  <option value="4" class="bigselect">4 views</option>
+  <option value="5" class="bigselect">5 views</option>
+  <option value="10" class="bigselect">10 views</option>
+  <option value="50" class="bigselect">50 views</option>
+  <option value="100" class="bigselect">100 views</option>
+  <option value="999999999" class="bigselect">&#8734; Views</option>
+</select> </br><p></br>
+<select name="maxtime" class="selectpicker show-tick" data-style="btn-danger btn-lg" id="maxtime" title="Expires in:" data-header="Expires in.." required="true">
+  <option value="1440" class="bigselect" selected>Expires in 24H</option>
+  <option value="600" class="bigselect">Expires in 10H</option>
+  <option value="240" class="bigselect">Expires in 4H</option>
+  <option value="180" class="bigselect">Expires in 3H</option>
+  <option value="120" class="bigselect">Expires in 2H</option>
+  <option value="60" class="bigselect">Expires in 1H</option>
+  <option value="30" class="bigselect">Expires in 30m</option>
+  <option value="10" class="bigselect">Expires in 10m</option>
+  <option value="5" class="bigselect">Expires in 5m</option>
+</select> </br><p></br>
+<select name="mediatype" class="selectpicker show-tick" data-style="btn-danger btn-lg" id="mediatype" title="Choose Format" data-header="Choose Format" required="true">
+  <option value="audio" class="bigselect fa fa-microphone fa-2x" aria-hidden="true" selected> &nbsp;&nbsp;audio </option>
+  <option value="text" class="bigselect fa fa-pencil fa-2x" aria-hidden="true"> &nbsp;&nbsp;text </option> -->
+<!--  <option value="photo" class="bigselect fa fa-camera-retro fa-2x" aria-hidden="true"> &nbsp;&nbsp;photo </option>
+  <option value="video" class="bigselect fa fa-video-camera fa-2x" aria-hidden="true"> &nbsp;&nbsp;video </option> -->
+<!--</select> </br><p></br>-->
+
+</form>
+</div>
+{% endblock %}
