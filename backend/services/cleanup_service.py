@@ -1,4 +1,5 @@
 from backend.models.supabase_client import get_supabase_client
+from backend.services.shout_service import ShoutService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class CleanupService:
 
     @staticmethod
     def delete_expired_storage_files():
-        """Delete storage files for expired shouts"""
+        """Delete storage files for expired shouts from S3"""
         try:
             supabase = get_supabase_client()
 
@@ -35,12 +36,15 @@ class CleanupService:
                 .not_.is_('storage_key', 'null')\
                 .execute()
 
+            deleted_count = 0
+
             if result.data:
                 for shout in result.data:
                     try:
-                        # Delete from storage
-                        supabase.storage.from_('shouts').remove([shout['storage_key']])
-                        logger.info(f"Deleted storage file: {shout['storage_key']}")
+                        # Delete from S3 storage
+                        if ShoutService.delete_media(shout['storage_key']):
+                            deleted_count += 1
+                            logger.info(f"Deleted storage file: {shout['storage_key']}")
                     except Exception as e:
                         logger.error(f"Failed to delete {shout['storage_key']}: {str(e)}")
 
@@ -51,7 +55,7 @@ class CleanupService:
                     .in_('storage_key', storage_keys)\
                     .execute()
 
-            return {'success': True, 'deleted': len(result.data) if result.data else 0}
+            return {'success': True, 'deleted': deleted_count}
 
         except Exception as e:
             logger.error(f"Storage cleanup failed: {str(e)}")

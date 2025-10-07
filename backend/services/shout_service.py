@@ -1,7 +1,12 @@
 import secrets
+import boto3
+from botocore.client import Config as BotoConfig
+from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from backend.models.supabase_client import get_supabase_client
+from backend.config import Config
+import io
 
 class ShoutService:
     """Service for managing shouts (ephemeral content)"""
@@ -84,51 +89,94 @@ class ShoutService:
         return result.data is not None
 
     @staticmethod
-    def upload_media(file_data: bytes, shout_hash: str, file_extension: str) -> Dict[str, Any]:
-        """Upload media file to Supabase Storage"""
-        supabase = get_supabase_client()
+    def _get_s3_client():
+        """Get configured S3 client (Minio, AWS S3, etc.)"""
+        s3_config = BotoConfig(
+            signature_version=Config.S3_SIGNATURE_VERSION,
+            s3={'addressing_style': 'path'} if 'minio' in Config.S3_ENDPOINT_URL.lower() else {}
+        )
 
+        return boto3.client(
+            's3',
+            endpoint_url=Config.S3_ENDPOINT_URL,
+            aws_access_key_id=Config.S3_ACCESS_KEY,
+            aws_secret_access_key=Config.S3_SECRET_KEY,
+            region_name=Config.S3_REGION,
+            config=s3_config,
+            use_ssl=Config.S3_USE_SSL
+        )
+
+    @staticmethod
+    def upload_media(file_data: bytes, shout_hash: str, file_extension: str) -> Dict[str, Any]:
+        """Upload media file to S3-compatible storage"""
         try:
+            s3_client = ShoutService._get_s3_client()
+
             # Create storage key
             storage_key = f"{shout_hash}{file_extension}"
 
-            # Upload to Supabase Storage
-            result = supabase.storage.from_('shouts').upload(
-                storage_key,
-                file_data,
-                file_options={'content-type': f'application/octet-stream'}
+            # Upload to S3
+            file_obj = io.BytesIO(file_data)
+            file_size = len(file_data)
+
+            s3_client.put_object(
+                Bucket=Config.S3_BUCKET,
+                Key=storage_key,
+                Body=file_obj,
+                ContentLength=file_size
             )
 
-            if result:
-                return {
-                    'success': True,
-                    'storage_key': storage_key
-                }
-            else:
-                return {
-                    'success': False,
-                    'error': 'Upload failed'
-                }
+            return {
+                'success': True,
+                'storage_key': storage_key
+            }
 
+        except ClientError as e:
+            return {
+                'success': False,
+                'error': f'S3 upload failed: {str(e)}'
+            }
         except Exception as e:
             return {
                 'success': False,
-                'error': str(e)
+                'error': f'Upload error: {str(e)}'
             }
 
     @staticmethod
     def get_media_url(storage_key: str, expires_in: int = 300) -> Optional[str]:
-        """Get signed URL for media file"""
-        supabase = get_supabase_client()
-
+        """Get presigned URL for media file from S3"""
         try:
-            result = supabase.storage.from_('shouts').create_signed_url(
-                storage_key,
-                expires_in
+            s3_client = ShoutService._get_s3_client()
+
+            # Generate presigned URL
+            url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': Config.S3_BUCKET,
+                    'Key': storage_key
+                },
+                ExpiresIn=expires_in
             )
 
-            return result.get('signedURL') if result else None
+            return url
 
         except Exception as e:
             print(f"Error getting media URL: {e}")
             return None
+
+    @staticmethod
+    def delete_media(storage_key: str) -> bool:
+        """Delete media file from S3"""
+        try:
+            s3_client = ShoutService._get_s3_client()
+
+            s3_client.delete_object(
+                Bucket=Config.S3_BUCKET,
+                Key=storage_key
+            )
+
+            return True
+
+        except Exception as e:
+            print(f"Error deleting media: {e}")
+            return False
