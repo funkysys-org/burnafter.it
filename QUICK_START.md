@@ -1,205 +1,284 @@
 # Quick Start Guide
 
-Get BurnAfterIt v2.0 running in 5 minutes!
+Get BurnAfterIt running locally in 5 minutes!
 
 ## Prerequisites
 
-- Node.js 18+ and npm
 - Python 3.11+
-- Docker and Docker Compose (for production)
-- Supabase account (free tier works)
+- Node.js 18+
+- PostgreSQL 12+ (or use Docker)
+- Minio (optional, or use Docker)
 
-## 1. Get Supabase Credentials
-
-1. Go to https://supabase.com and create a free account
-2. Create a new project
-3. Go to Project Settings → API
-4. Copy:
-   - Project URL
-   - `anon` `public` key
-
-## 2. Configure Environment
+## Option 1: Docker (Easiest!)
 
 ```bash
-# Copy the example file
+# 1. Copy environment file
 cp .env.example .env
 
-# Edit .env and paste your Supabase credentials
-nano .env  # or use your favorite editor
+# 2. Enable Minio (remove line 46 in docker-compose.yml that says "profiles: ["minio"]")
+nano docker-compose.yml
+
+# 3. Start everything
+docker-compose up -d
+
+# 4. Create Minio bucket
+# Open http://localhost:9001
+# Login: minioadmin / minioadmin
+# Create bucket: burnafterit (set to Public)
+
+# 5. Done! Access at http://localhost:3000
 ```
 
-Your `.env` should look like:
+## Option 2: Manual Setup
+
+### Step 1: Database Setup
+
+**Option A: Use Docker for PostgreSQL**
+```bash
+docker run -d \
+  --name postgres \
+  -e POSTGRES_DB=burnafterit \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -p 5432:5432 \
+  postgres:16-alpine
+
+# Run migration
+docker exec -i postgres psql -U postgres burnafterit < supabase/migrations/001_init_schema.sql
 ```
-SUPABASE_URL=https://xxxxx.supabase.co
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-VITE_API_URL=http://localhost:5000
-VITE_APP_URL=http://localhost:5173
+
+**Option B: Install PostgreSQL locally**
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+
+# macOS
+brew install postgresql@16
+brew services start postgresql@16
+
+# Create database
+sudo -u postgres createdb burnafterit
+
+# Run migration
+sudo -u postgres psql burnafterit < supabase/migrations/001_init_schema.sql
 ```
 
-## 3. Set Up Supabase Storage
+### Step 2: Storage Setup
 
-In your Supabase dashboard:
+**Option A: Use Docker for Minio**
+```bash
+docker run -d \
+  --name minio \
+  -p 9000:9000 \
+  -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin \
+  minio/minio server /data --console-address ":9001"
 
-1. Go to **Storage** in the left sidebar
-2. Click **New bucket**
-3. Name it `shouts`
-4. Check **Public bucket**
-5. Click **Create bucket**
+# Create bucket at http://localhost:9001
+```
 
-Or run the SQL from `setup-storage.sql` in the SQL Editor.
+**Option B: Download Minio**
+```bash
+wget https://dl.min.io/server/minio/release/linux-amd64/minio
+chmod +x minio
+./minio server /data --console-address ":9001"
 
-## 4. Database Migration (Already Done!)
+# Create bucket at http://localhost:9001
+```
 
-The database schema has already been applied to your Supabase project during setup.
-
-## 5. Start the Application
-
-### Option A: Development Mode (Recommended for testing)
+### Step 3: Backend Setup
 
 ```bash
-chmod +x start-dev.sh
-./start-dev.sh
+cd backend
+
+# Create virtual environment
+python3 -m venv venv
+
+# Activate it
+source venv/bin/activate  # Linux/Mac
+# OR
+venv\Scripts\activate     # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+cp .env .env.local  # It's already configured for localhost
+# OR edit .env if needed
+
+# Start backend
+python3 run.py
 ```
 
-This will:
-- Install Python dependencies
-- Install Node dependencies
-- Start the backend on http://localhost:5000
-- Start the frontend on http://localhost:5173
+Backend should now be running on http://localhost:5000
 
-### Option B: Docker Mode (Production-ready)
+### Step 4: Frontend Setup
+
+Open a NEW terminal:
 
 ```bash
-chmod +x start-docker.sh
-./start-docker.sh
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start dev server
+npm run dev
 ```
 
-This will:
-- Build Docker images
-- Start both containers
-- Frontend at http://localhost:3000
-- Backend at http://localhost:5000
+Frontend should now be running on http://localhost:5173
 
-## 6. Test It Out!
+## Verification
 
-1. Open http://localhost:5173 (dev) or http://localhost:3000 (docker)
-2. Click on **SEC** to share ephemeral content
-3. Create a text message that expires after 1 view
-4. Copy the URL or scan the QR code
-5. Open in a new tab and view it
-6. Try to view it again - it should be gone!
+1. **Backend**: http://localhost:5000 should show API info
+2. **Frontend**: http://localhost:5173 should show the app
+3. **Database**: `psql -U postgres -d burnafterit -c "\dt"` should list tables
+4. **Minio**: http://localhost:9001 should show Minio console
 
 ## Common Issues
 
-### Port Already in Use
-```bash
-# Check what's using port 5000
-lsof -i :5000
+### Backend won't start
 
-# Kill the process or change the port in .env
-```
-
-### Supabase Connection Error
-- Verify your credentials in `.env`
-- Check that the URL doesn't have trailing slash
-- Ensure your Supabase project is active
-
-### Storage Upload Fails
-- Make sure the `shouts` bucket exists
-- Verify it's set to **public**
-- Check the policies in Supabase dashboard
-
-### Module Not Found (Python)
+**Error: "No module named 'flask'"**
 ```bash
 cd backend
-python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Module Not Found (Node)
+**Error: "could not connect to server"**
 ```bash
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
+# Check PostgreSQL is running
+docker ps  # If using Docker
+# OR
+sudo systemctl status postgresql  # If installed locally
+
+# Verify credentials in backend/.env
+cat backend/.env | grep POSTGRES
 ```
 
-## What's Next?
+**Error: "Missing required database environment variables"**
+```bash
+# Make sure backend/.env exists and has PostgreSQL credentials
+cp .env.example backend/.env
+nano backend/.env  # Edit if needed
+```
 
-- Read `README.new.md` for complete documentation
-- Check `PROJECT_SUMMARY.md` for architecture details
-- See `MIGRATION_GUIDE.md` if migrating from v1
-- Explore the API at http://localhost:5000
+### Frontend shows CORS error
 
-## Quick Commands
+This means the backend isn't running. Check:
+```bash
+# Test if backend is accessible
+curl http://localhost:5000/api/utils/health
+
+# If it fails, backend isn't running
+# Go back to terminal running backend and check for errors
+```
+
+### Database connection error
 
 ```bash
-# Development
-./start-dev.sh                    # Start dev servers
-Ctrl+C                            # Stop servers
+# Test PostgreSQL connection
+psql -h localhost -U postgres -d burnafterit -c "SELECT 1"
 
-# Docker
-./start-docker.sh                 # Start containers
-docker-compose logs -f            # View logs
-docker-compose ps                 # Check status
-docker-compose down               # Stop containers
-docker-compose restart            # Restart
+# If it asks for password, use: postgres
+# If connection refused:
+docker ps  # Check if postgres container is running
+# OR
+sudo systemctl start postgresql
+```
 
-# Backend only
+### Storage upload fails
+
+```bash
+# Check Minio is running
+curl http://localhost:9000/minio/health/live
+
+# Check bucket exists
+# Open http://localhost:9001 and verify 'burnafterit' bucket exists
+```
+
+## Environment Variables
+
+Default configuration in `.env`:
+
+```bash
+# Database
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=burnafterit
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+
+# Storage
+S3_ENDPOINT_URL=http://localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET=burnafterit
+S3_USE_SSL=False
+
+# Frontend (in frontend/.env)
+VITE_API_URL=http://localhost:5000
+VITE_APP_URL=http://localhost:5173
+```
+
+## Next Steps
+
+1. **Create a shout**: Click "SEC" on homepage
+2. **Test text shout**: Create with 1 max view
+3. **Test media shout**: Upload a photo
+4. **Create chat**: Click "ESC" on homepage
+5. **Share the chat link**: Copy URL and open in new tab
+
+## Stopping Services
+
+**Docker:**
+```bash
+docker-compose down
+```
+
+**Manual:**
+- Press Ctrl+C in backend terminal
+- Press Ctrl+C in frontend terminal
+- Stop PostgreSQL: `docker stop postgres` or `sudo systemctl stop postgresql`
+- Stop Minio: `docker stop minio`
+
+## Development Workflow
+
+```bash
+# Terminal 1: Backend
 cd backend
 source venv/bin/activate
-python -m backend.app_api
+python3 run.py
 
-# Frontend only
+# Terminal 2: Frontend
 cd frontend
 npm run dev
 
-# Run cleanup manually
-curl -X POST http://localhost:5000/api/admin/cleanup
+# Terminal 3: Database (optional)
+psql -U postgres burnafterit
 ```
 
-## Architecture at a Glance
+## Production Deployment
 
-```
-┌─────────────┐
-│   Browser   │
-└──────┬──────┘
-       │
-       │ HTTP
-       ▼
-┌─────────────┐      ┌──────────────┐
-│   React     │─────▶│  Flask API   │
-│  Frontend   │◀─────│   Backend    │
-│ (Port 5173) │      │ (Port 5000)  │
-└─────────────┘      └───────┬──────┘
-                             │
-                             │ API Calls
-                             ▼
-                     ┌───────────────┐
-                     │   Supabase    │
-                     │ (PostgreSQL + │
-                     │    Storage)   │
-                     └───────────────┘
+Use Docker Compose for production:
+
+```bash
+# Edit docker-compose.yml:
+# - Change PostgreSQL password
+# - Set FLASK_DEBUG=False
+# - Use external S3 (not Minio)
+
+docker-compose up -d --build
 ```
 
-## Features
+## Getting Help
 
-- ✅ Share text, audio, video, photos
-- ✅ Auto-expire after views or time
-- ✅ Ephemeral secure chat rooms
-- ✅ QR code generation
-- ✅ Mobile responsive
-- ✅ Modern, beautiful UI
-- ✅ Docker deployment
-- ✅ Automatic cleanup
-
-## Support
-
-Having issues? Check:
-1. `.env` is configured correctly
-2. Supabase storage bucket exists
-3. Ports 5000 and 5173/3000 are available
-4. Database migration ran successfully
-5. Logs: `docker-compose logs -f` (Docker) or check terminal (dev)
+- Check logs: `docker-compose logs -f backend`
+- Database logs: `docker logs postgres`
+- Test API: `curl http://localhost:5000`
+- Check all services: `docker-compose ps`
 
 Happy burning! 🔥
