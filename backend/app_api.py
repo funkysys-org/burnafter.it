@@ -1,7 +1,7 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 from backend.config import Config
-from backend.models.supabase_client import init_supabase
+from backend.models.db_client import init_db
 from backend.api.shouts import shouts_bp
 from backend.api.chat import chat_bp
 from backend.api.utils import utils_bp
@@ -33,8 +33,8 @@ def create_app():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # Initialize Supabase
-    init_supabase()
+    # Initialize PostgreSQL connection pool
+    init_db()
 
     # Register blueprints
     app.register_blueprint(shouts_bp)

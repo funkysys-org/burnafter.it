@@ -1,4 +1,4 @@
-from backend.models.supabase_client import get_supabase_client
+from backend.models.db_client import execute_query
 from backend.services.shout_service import ShoutService
 import logging
 
@@ -11,10 +11,9 @@ class CleanupService:
     def cleanup_expired_content():
         """Run cleanup for expired shouts and chat rooms"""
         try:
-            supabase = get_supabase_client()
-
             # Call the database cleanup function
-            result = supabase.rpc('cleanup_expired_content').execute()
+            query = "SELECT cleanup_expired_content()"
+            execute_query(query)
 
             logger.info("Cleanup completed successfully")
             return {'success': True}
@@ -27,33 +26,37 @@ class CleanupService:
     def delete_expired_storage_files():
         """Delete storage files for expired shouts from S3"""
         try:
-            supabase = get_supabase_client()
-
             # Get inactive shouts with storage keys
-            result = supabase.table('shouts')\
-                .select('storage_key')\
-                .eq('is_active', False)\
-                .not_.is_('storage_key', 'null')\
-                .execute()
+            query = """
+                SELECT storage_key
+                FROM shouts
+                WHERE is_active = false
+                AND storage_key IS NOT NULL
+            """
+            results = execute_query(query, fetch_all=True)
 
             deleted_count = 0
 
-            if result.data:
-                for shout in result.data:
+            if results:
+                for row in results:
                     try:
                         # Delete from S3 storage
-                        if ShoutService.delete_media(shout['storage_key']):
+                        if ShoutService.delete_media(row['storage_key']):
                             deleted_count += 1
-                            logger.info(f"Deleted storage file: {shout['storage_key']}")
+                            logger.info(f"Deleted storage file: {row['storage_key']}")
                     except Exception as e:
-                        logger.error(f"Failed to delete {shout['storage_key']}: {str(e)}")
+                        logger.error(f"Failed to delete {row['storage_key']}: {str(e)}")
 
-                # Mark as cleaned
-                storage_keys = [s['storage_key'] for s in result.data]
-                supabase.table('shouts')\
-                    .update({'storage_key': None})\
-                    .in_('storage_key', storage_keys)\
-                    .execute()
+                # Mark as cleaned (remove storage_key reference)
+                storage_keys = [row['storage_key'] for row in results]
+                if storage_keys:
+                    placeholders = ','.join(['%s'] * len(storage_keys))
+                    update_query = f"""
+                        UPDATE shouts
+                        SET storage_key = NULL
+                        WHERE storage_key IN ({placeholders})
+                    """
+                    execute_query(update_query, tuple(storage_keys))
 
             return {'success': True, 'deleted': deleted_count}
 

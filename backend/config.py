@@ -10,9 +10,16 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', os.urandom(32).hex())
     DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
 
-    # Supabase (Database only)
-    SUPABASE_URL = os.environ.get('SUPABASE_URL')
-    SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY')
+    # PostgreSQL Database
+    POSTGRES_HOST = os.environ.get('POSTGRES_HOST', 'localhost')
+    POSTGRES_PORT = int(os.environ.get('POSTGRES_PORT', 5432))
+    POSTGRES_DB = os.environ.get('POSTGRES_DB', 'burnafterit')
+    POSTGRES_USER = os.environ.get('POSTGRES_USER', 'postgres')
+    POSTGRES_PASSWORD = os.environ.get('POSTGRES_PASSWORD', 'postgres')
+
+    @property
+    def DATABASE_URL(self):
+        return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
     # S3-Compatible Storage (Minio, AWS S3, etc.)
     S3_ENDPOINT_URL = os.environ.get('S3_ENDPOINT_URL')
@@ -37,10 +44,10 @@ class Config:
     def validate():
         """Validate required configuration"""
         # Database is required
-        required = ['SUPABASE_URL', 'SUPABASE_ANON_KEY']
+        required = ['POSTGRES_HOST', 'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD']
         missing = [key for key in required if not os.environ.get(key)]
         if missing:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+            raise ValueError(f"Missing required database environment variables: {', '.join(missing)}")
 
         # Storage is required
         storage_required = ['S3_ENDPOINT_URL', 'S3_ACCESS_KEY', 'S3_SECRET_KEY']

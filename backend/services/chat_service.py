@@ -2,7 +2,7 @@ import secrets
 import string
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
-from backend.models.supabase_client import get_supabase_client
+from backend.models.db_client import execute_query
 
 class ChatService:
     """Service for managing ephemeral chat rooms"""
@@ -10,48 +10,53 @@ class ChatService:
     @staticmethod
     def create_chat_room() -> Dict[str, Any]:
         """Create a new chat room"""
-        supabase = get_supabase_client()
-
-        # Generate alphanumeric hash (like original)
+        # Generate alphanumeric hash
         chars = string.ascii_letters + string.digits
         chat_hash = ''.join(secrets.choice(chars) for _ in range(16))
 
         # Chat rooms expire after 5 minutes
-        expires_at = (datetime.utcnow() + timedelta(minutes=5)).isoformat()
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
 
-        data = {
-            'hash': chat_hash,
-            'expires_at': expires_at
-        }
+        query = """
+            INSERT INTO chat_rooms (hash, expires_at)
+            VALUES (%s, %s)
+            RETURNING id, hash, created_at, expires_at
+        """
 
-        result = supabase.table('chat_rooms').insert(data).execute()
+        try:
+            result = execute_query(query, (chat_hash, expires_at), fetch_one=True)
 
-        if result.data:
-            return {
-                'success': True,
-                'hash': chat_hash,
-                'chat_room': result.data[0]
-            }
-        else:
+            if result:
+                return {
+                    'success': True,
+                    'hash': chat_hash,
+                    'chat_room': dict(result)
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Failed to create chat room'
+                }
+        except Exception as e:
             return {
                 'success': False,
-                'error': 'Failed to create chat room'
+                'error': str(e)
             }
 
     @staticmethod
     def get_chat_room(chat_hash: str) -> Dict[str, Any]:
         """Get chat room details"""
-        supabase = get_supabase_client()
+        query = "SELECT * FROM chat_rooms WHERE hash = %s"
+        result = execute_query(query, (chat_hash,), fetch_one=True)
 
-        result = supabase.table('chat_rooms').select('*').eq('hash', chat_hash).maybeSingle().execute()
-
-        if result.data:
+        if result:
+            result_dict = dict(result)
             # Check if expired
-            expires_at = datetime.fromisoformat(result.data['expires_at'].replace('Z', '+00:00'))
+            expires_at = result_dict['expires_at']
             if expires_at > datetime.utcnow():
                 return {
                     'success': True,
-                    'chat_room': result.data
+                    'chat_room': result_dict
                 }
             else:
                 return {
@@ -67,52 +72,92 @@ class ChatService:
     @staticmethod
     def add_message_to_chat(chat_hash: str, shout_id: str) -> Dict[str, Any]:
         """Add a message (shout) to a chat room"""
-        supabase = get_supabase_client()
-
         # First, get the chat room
-        chat_result = supabase.table('chat_rooms').select('id').eq('hash', chat_hash).maybeSingle().execute()
+        chat_query = "SELECT id FROM chat_rooms WHERE hash = %s"
+        chat_result = execute_query(chat_query, (chat_hash,), fetch_one=True)
 
-        if not chat_result.data:
+        if not chat_result:
             return {
                 'success': False,
                 'error': 'Chat room not found'
             }
 
         # Add message
-        data = {
-            'chat_room_id': chat_result.data['id'],
-            'shout_id': shout_id
-        }
+        query = """
+            INSERT INTO chat_messages (chat_room_id, shout_id)
+            VALUES (%s, %s)
+            RETURNING id, chat_room_id, shout_id, created_at
+        """
 
-        result = supabase.table('chat_messages').insert(data).execute()
+        try:
+            result = execute_query(query, (chat_result['id'], shout_id), fetch_one=True)
 
-        if result.data:
-            return {
-                'success': True,
-                'message': result.data[0]
-            }
-        else:
+            if result:
+                return {
+                    'success': True,
+                    'message': dict(result)
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Failed to add message'
+                }
+        except Exception as e:
             return {
                 'success': False,
-                'error': 'Failed to add message'
+                'error': str(e)
             }
 
     @staticmethod
     def get_chat_messages(chat_hash: str) -> List[Dict[str, Any]]:
         """Get all messages in a chat room"""
-        supabase = get_supabase_client()
-
         # Get chat room
-        chat_result = supabase.table('chat_rooms').select('id').eq('hash', chat_hash).maybeSingle().execute()
+        chat_query = "SELECT id FROM chat_rooms WHERE hash = %s"
+        chat_result = execute_query(chat_query, (chat_hash,), fetch_one=True)
 
-        if not chat_result.data:
+        if not chat_result:
             return []
 
         # Get messages with shout details
-        result = supabase.table('chat_messages')\
-            .select('*, shouts(*)')\
-            .eq('chat_room_id', chat_result.data['id'])\
-            .order('created_at', desc=False)\
-            .execute()
+        query = """
+            SELECT
+                cm.id,
+                cm.chat_room_id,
+                cm.shout_id,
+                cm.created_at,
+                s.id as shout_id,
+                s.hash as shout_hash,
+                s.type as shout_type,
+                s.content_text as shout_content_text,
+                s.storage_key as shout_storage_key,
+                s.max_hits as shout_max_hits,
+                s.current_hits as shout_current_hits
+            FROM chat_messages cm
+            JOIN shouts s ON cm.shout_id = s.id
+            WHERE cm.chat_room_id = %s
+            ORDER BY cm.created_at ASC
+        """
 
-        return result.data if result.data else []
+        results = execute_query(query, (chat_result['id'],), fetch_all=True)
+
+        if results:
+            # Restructure results to match expected format
+            messages = []
+            for row in results:
+                row_dict = dict(row)
+                messages.append({
+                    'id': row_dict['id'],
+                    'chat_room_id': row_dict['chat_room_id'],
+                    'shout_id': row_dict['shout_id'],
+                    'created_at': row_dict['created_at'].isoformat() if row_dict['created_at'] else None,
+                    'shouts': {
+                        'type': row_dict['shout_type'],
+                        'content_text': row_dict['shout_content_text'],
+                        'storage_key': row_dict['shout_storage_key'],
+                        'max_hits': row_dict['shout_max_hits'],
+                        'current_hits': row_dict['shout_current_hits']
+                    }
+                })
+            return messages
+
+        return []

@@ -4,7 +4,7 @@ from botocore.client import Config as BotoConfig
 from botocore.exceptions import ClientError
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
-from backend.models.supabase_client import get_supabase_client
+from backend.models.db_client import execute_query, DatabaseConnection
 from backend.config import Config
 import io
 
@@ -21,58 +21,52 @@ class ShoutService:
         user_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Create a new shout"""
-        supabase = get_supabase_client()
-
         # Generate unique hash
         shout_hash = secrets.token_urlsafe(36)
 
         # Calculate expiration time
-        expires_at = (datetime.utcnow() + timedelta(minutes=max_time_minutes)).isoformat()
+        expires_at = datetime.utcnow() + timedelta(minutes=max_time_minutes)
 
-        # Create shout record
-        data = {
-            'hash': shout_hash,
-            'type': shout_type,
-            'max_hits': max_hits,
-            'max_time_minutes': max_time_minutes,
-            'content_text': content_text,
-            'storage_key': storage_key,
-            'user_id': user_id,
-            'expires_at': expires_at
-        }
+        query = """
+            INSERT INTO shouts (hash, type, max_hits, max_time_minutes, content_text, storage_key, user_id, expires_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id, hash, type, max_hits, max_time_minutes, content_text, storage_key, created_at, expires_at
+        """
 
-        result = supabase.table('shouts').insert(data).execute()
+        try:
+            result = execute_query(
+                query,
+                (shout_hash, shout_type, max_hits, max_time_minutes, content_text, storage_key, user_id, expires_at),
+                fetch_one=True
+            )
 
-        if result.data:
-            return {
-                'success': True,
-                'hash': shout_hash,
-                'shout': result.data[0]
-            }
-        else:
+            if result:
+                return {
+                    'success': True,
+                    'hash': shout_hash,
+                    'shout': dict(result)
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': 'Failed to create shout'
+                }
+        except Exception as e:
             return {
                 'success': False,
-                'error': 'Failed to create shout'
+                'error': str(e)
             }
 
     @staticmethod
     def get_shout(shout_hash: str, client_ip: str, user_agent: str) -> Dict[str, Any]:
         """Get a shout and increment hit count"""
-        supabase = get_supabase_client()
-
         try:
             # Call the database function to increment hit and validate
-            result = supabase.rpc(
-                'increment_shout_hit',
-                {
-                    'shout_hash': shout_hash,
-                    'client_ip': client_ip,
-                    'client_ua': user_agent
-                }
-            ).execute()
+            query = "SELECT * FROM increment_shout_hit(%s, %s, %s)"
+            result = execute_query(query, (shout_hash, client_ip, user_agent), fetch_one=True)
 
-            if result.data:
-                return result.data
+            if result:
+                return dict(result)
             else:
                 return {'valid': False, 'reason': 'not_found'}
 
@@ -82,11 +76,9 @@ class ShoutService:
     @staticmethod
     def check_shout_exists(shout_hash: str) -> bool:
         """Check if a shout exists without incrementing hit count"""
-        supabase = get_supabase_client()
-
-        result = supabase.table('shouts').select('id').eq('hash', shout_hash).maybeSingle().execute()
-
-        return result.data is not None
+        query = "SELECT id FROM shouts WHERE hash = %s"
+        result = execute_query(query, (shout_hash,), fetch_one=True)
+        return result is not None
 
     @staticmethod
     def _get_s3_client():
