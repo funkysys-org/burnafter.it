@@ -1,16 +1,8 @@
-#!/usr/bin/env python3
 """
-Run script for backend application
+Entry point for running backend as a module: python -m backend
 """
-import sys
-import os
-
-# Add parent directory to path
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
 from backend.app_api import create_app
+import os
 
 if __name__ == '__main__':
     app = create_app()
