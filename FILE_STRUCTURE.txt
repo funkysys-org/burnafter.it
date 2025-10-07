@@ -1,0 +1,179 @@
+BurnAfterIt v2.0 - Complete File Structure
+===========================================
+
+PROJECT ROOT
+├── 📁 backend/                    # Flask REST API
+│   ├── 📁 api/                    # API Route Handlers
+│   │   ├── __init__.py
+│   │   ├── shouts.py              # Shout endpoints (create, get, check)
+│   │   ├── chat.py                # Chat endpoints (create room, messages)
+│   │   ├── utils.py               # Utilities (QR, health check)
+│   │   └── admin.py               # Admin endpoints (cleanup)
+│   │
+│   ├── 📁 services/               # Business Logic Layer
+│   │   ├── __init__.py
+│   │   ├── shout_service.py       # Shout operations
+│   │   ├── chat_service.py        # Chat operations
+│   │   ├── validation.py          # Input validation
+│   │   └── cleanup_service.py     # Cleanup operations
+│   │
+│   ├── 📁 models/                 # Data Access Layer
+│   │   ├── __init__.py
+│   │   └── supabase_client.py     # Supabase connection
+│   │
+│   ├── __init__.py
+│   ├── app_api.py                 # Application factory
+│   ├── config.py                  # Configuration management
+│   ├── requirements.txt           # Python dependencies
+│   ├── Dockerfile                 # Backend container definition
+│   └── .env                       # Environment variables
+│
+├── 📁 frontend/                   # React SPA
+│   ├── 📁 src/
+│   │   ├── 📁 api/                # API Client Layer
+│   │   │   ├── client.js          # Axios configuration
+│   │   │   ├── shouts.js          # Shout API calls
+│   │   │   ├── chat.js            # Chat API calls
+│   │   │   └── utils.js           # Utility API calls
+│   │   │
+│   │   ├── 📁 pages/              # Page Components
+│   │   │   ├── Home.jsx           # Landing page
+│   │   │   ├── Home.css
+│   │   │   ├── CreateShout.jsx    # Create content
+│   │   │   ├── CreateShout.css
+│   │   │   ├── ViewShout.jsx      # View content
+│   │   │   ├── ViewShout.css
+│   │   │   ├── ChatRoom.jsx       # Chat interface
+│   │   │   └── ChatRoom.css
+│   │   │
+│   │   ├── App.jsx                # Main app component
+│   │   ├── App.css                # App styles
+│   │   ├── main.jsx               # Entry point
+│   │   └── index.css              # Global styles
+│   │
+│   ├── public/                    # Static assets
+│   ├── package.json               # Node dependencies
+│   ├── vite.config.js             # Vite configuration
+│   ├── Dockerfile                 # Frontend container
+│   ├── nginx.conf                 # Nginx configuration
+│   └── .env                       # Environment variables
+│
+├── 📁 supabase/                   # Database
+│   └── migrations/
+│       └── create_burnafterit_schema.sql
+│
+├── 📄 docker-compose.yml          # Container orchestration
+├── 📄 .dockerignore               # Docker ignore patterns
+├── 📄 .env.example                # Environment template
+│
+├── 📄 QUICK_START.md              # ⭐ Start here!
+├── 📄 README.new.md               # Complete documentation
+├── 📄 PROJECT_SUMMARY.md          # What was done
+├── 📄 MIGRATION_GUIDE.md          # v1 to v2 migration
+├── 📄 setup_supabase_storage.md   # Storage setup
+├── 📄 setup-storage.sql           # Storage SQL setup
+│
+├── 🔧 start-dev.sh                # Start development
+├── 🔧 start-docker.sh             # Start with Docker
+│
+└── 📁 [OLD FILES - Not Used]     # Original v1 files
+    ├── app.py                     # Old monolithic app
+    ├── templates/                 # Old Flask templates
+    ├── static/                    # Old static files
+    ├── config.json                # Old configuration
+    ├── requirements.txt           # Old dependencies
+    └── README.md                  # Old readme
+
+DOCUMENTATION READING ORDER
+===========================
+1. QUICK_START.md        - Get it running (5 min)
+2. README.new.md         - Full documentation
+3. PROJECT_SUMMARY.md    - What changed
+4. MIGRATION_GUIDE.md    - If migrating from v1
+
+KEY CONCEPTS
+============
+Backend (Flask API):
+- RESTful JSON API
+- Modular architecture (api/services/models)
+- Supabase for database and storage
+- Docker containerization
+
+Frontend (React SPA):
+- Vite for fast development
+- React Router for navigation
+- Axios for API calls
+- Modern, responsive UI
+
+Database (PostgreSQL):
+- Supabase managed database
+- Row Level Security (RLS)
+- Automatic expiration
+- View tracking
+
+Storage (Supabase Storage):
+- Media file storage
+- Signed URLs for security
+- CDN integration
+- Automatic cleanup
+
+ENDPOINTS
+=========
+Shouts:
+- POST   /api/shouts/create
+- GET    /api/shouts/:hash
+- GET    /api/shouts/check/:hash
+
+Chat:
+- POST   /api/chat/create
+- GET    /api/chat/:hash
+- GET    /api/chat/:hash/messages
+- POST   /api/chat/:hash/message
+
+Utils:
+- GET    /api/utils/qr
+- GET    /api/utils/health
+
+Admin:
+- POST   /api/admin/cleanup
+
+TECH STACK
+==========
+Backend:
+- Python 3.11
+- Flask 3.0
+- Supabase Python Client
+- Gunicorn (production)
+
+Frontend:
+- React 18
+- Vite 5
+- React Router 6
+- Axios
+- Modern CSS
+
+Database:
+- PostgreSQL (via Supabase)
+- Supabase Storage
+
+Infrastructure:
+- Docker
+- Docker Compose
+- Nginx (frontend proxy)
+
+DEPLOYMENT
+==========
+Development:
+$ ./start-dev.sh
+
+Production:
+$ ./start-docker.sh
+
+Ports:
+- Frontend: 5173 (dev) / 3000 (prod)
+- Backend: 5000
+
+URLs:
+- Dev: http://localhost:5173
+- Prod: http://localhost:3000
+- API: http://localhost:5000
