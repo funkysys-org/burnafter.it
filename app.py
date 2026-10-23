@@ -16,6 +16,8 @@ House rules (design §3/§4):
 
 import datetime
 import secrets
+import threading
+import time
 
 import psycopg
 import psycopg.sql
@@ -154,6 +156,62 @@ def reap(conn, grace: datetime.timedelta = datetime.timedelta(hours=1)):
     return flipped, deleted
 
 
+# ─── Rate limiting: Redis when configured, in-process fallback if not ─────────
+# Burns/hits NEVER touch this layer — it only throttles the create path.
+
+_RL_SCRIPT = """
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+"""
+
+
+class RateLimiter:
+    """Per-IP create throttle. Same semantics with or without Redis."""
+
+    def __init__(self, app):
+        self.limit = int(app.config.get("RATE_LIMIT") or 10)
+        self.window = int(app.config.get("RATE_WINDOW") or 60)
+        url = app.config.get("REDIS_URL")
+        self.redis = None
+        self._script = None
+        if url:
+            try:
+                import redis as redis_lib
+
+                client = redis_lib.from_url(url)
+                client.ping()
+                self.redis = client
+                self._script = client.register_script(_RL_SCRIPT)
+                app.logger.info("rate limiting: Redis-backed")
+            except Exception:  # noqa: BLE001 — degrade, never block boot
+                app.logger.warning(
+                    "Redis unreachable (%s) — in-process rate limit fallback",
+                    url,
+                )
+                self.redis = None
+        else:
+            app.logger.info("rate limiting: in-process (no REDIS_URL)")
+        self._local = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key: str) -> bool:
+        """True -> under the limit for this window; False -> 429."""
+        if self.redis is not None:
+            n = self._script(keys=[f"rl:{key}"], args=[self.window])
+            return int(n) <= self.limit
+        now = time.time()
+        with self._lock:
+            bucket = self._local.get(key)
+            if bucket and now - bucket[0] < self.window:
+                bucket[1] += 1
+                return bucket[1] <= self.limit
+            self._local[key] = [now, 1]
+            return True
+
+
 # ─── Flask application factory (slice 2) ──────────────────────────────────────
 
 _INSERT_SHOUT_SQL = """
@@ -241,11 +299,52 @@ def create_app(config_overrides=None):
             "v2-mono refuses to boot on weak session keys."
         )
 
+    # Redis sessions (§6.3): server-side sessions when REDIS_URL is set;
+    # plain cookie sessions otherwise — either way the app boots.
+    if app.config.get("REDIS_URL"):
+        try:
+            import redis as redis_lib
+
+            from flask_session.redis import RedisSessionInterface
+
+            app.session_interface = RedisSessionInterface(
+                app=app,
+                client=redis_lib.from_url(app.config["REDIS_URL"]),
+                key_prefix="session:",
+            )
+            app.config["SESSION_REDIS_ACTIVE"] = True
+        except Exception:  # noqa: BLE001 — sessions must not block boot
+            app.logger.warning(
+                "Redis session backend unavailable — cookie sessions"
+            )
+
+    rate_limiter = RateLimiter(app)
+    app.extensions["rate_limiter"] = rate_limiter
+
     def _connect():
         return psycopg.connect(app.config["DATABASE_URL"])
 
+    @app.get("/health")
+    def health():
+        """Liveness with substance (design §5): DB + Redis + disk."""
+        status = {"db": "ok", "redis": "absent"}
+        try:
+            conn = _connect()
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+            conn.close()
+        except Exception:  # noqa: BLE001
+            status["db"] = "error"
+        rl = app.extensions.get("rate_limiter")
+        if rl is not None and rl.redis is not None:
+            status["redis"] = "ok" if rl.redis.ping() else "error"
+        return jsonify(status), (200 if status["db"] == "ok" else 503)
+
     @app.post("/post/text")
     def post_text():
+        if not rate_limiter.allow(request.remote_addr or "unknown"):
+            return jsonify(error="too many requests"), 429
         try:
             maxhits, maxtime = _parse_limits(request.form)
         except ValueError as exc:
@@ -285,6 +384,8 @@ def create_app(config_overrides=None):
     def post_media(posttype):
         if posttype not in MEDIA_SPECS or posttype == "text":
             return jsonify(error="unsupported content type"), 404
+        if not rate_limiter.allow(request.remote_addr or "unknown"):
+            return jsonify(error="too many requests"), 429
         cap, allowed = MEDIA_SPECS[posttype]
 
         try:
