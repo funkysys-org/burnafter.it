@@ -369,6 +369,32 @@ def create_app(config_overrides=None):
         return Response(buf, mimetype="image/png",
                         headers={"X-Robots-Tag": "noindex, noarchive"})
 
+    _META_SQL = """
+SELECT shout_type, max_hits - current_hits AS views_left, expires_at
+  FROM shouts
+ WHERE hash = %s AND is_active AND expires_at > %s
+"""
+
+    @app.get("/meta/<posttype>/<shout_hash>")
+    def meta(posttype, shout_hash):
+        """NON-CONSUMING metadata for the reader gate (spec §6).
+
+        Reads only — never claims, never logs, never flips. Uniform
+        404 {"error": ...} for burned/expired/never-existed: no leak.
+        """
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(_META_SQL, (shout_hash, now_utc()))
+                row = cur.fetchone()
+                if row is None:
+                    return jsonify(error="no such shout"), 404
+                shout_type, views_left, expires_at = row
+        return jsonify(
+            type=shout_type,
+            views_left=views_left,
+            expires_at=expires_at.isoformat() + "Z",
+        )
+
     @app.post("/post/text")
     def post_text():
         if not rate_limiter.allow(request.remote_addr or "unknown"):
