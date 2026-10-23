@@ -65,6 +65,25 @@ def db():
 
 
 @pytest.fixture()
+def api(db):
+    """Flask test client wired to the SAME real test database."""
+    import importlib
+
+    import app as app_mod
+
+    app_mod = importlib.reload(app_mod)
+    flask_app = app_mod.create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test-key",
+            "DATABASE_URL": db.info.dsn,
+        }
+    )
+    with flask_app.test_client() as client:
+        yield client
+
+
+@pytest.fixture()
 def make_shout(db):
     """Factory: insert a shout row (no blob) with controllable fields."""
 
