@@ -1,117 +1,73 @@
-version: '3.8'
+# burnafter.it v2-mono — one compose file, two modes (design §5/§6.3)
+#
+#   all-in-one (default):  docker compose up -d
+#     app + postgres + redis on one host.
+#
+#   multi-host (round-robin DNS scaling): on each app host set, in .env:
+#     DATABASE_URL=postgres://user:pass@your-central-pg:5432/burnafter
+#     REDIS_URL=redis://your-central-redis:6379/0
+#   and start ONLY the app service (--no-deps skips the local
+#   postgres/redis this file also defines):
+#     docker compose up -d --no-deps app
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: burnafterit-postgres
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: burnafterit
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./supabase/migrations:/docker-entrypoint-initdb.d
-    networks:
-      - burnafterit-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Optional: Minio S3-compatible storage
-  # Remove the profiles line below to enable Minio
-  minio:
-    image: minio/minio:latest
-    container_name: burnafterit-minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio_data:/data
-    networks:
-      - burnafterit-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    profiles: ["minio"]
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: burnafterit-backend
-    ports:
-      - "5000:5000"
-    environment:
-      - FLASK_ENV=production
-      - FLASK_DEBUG=False
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_DB=burnafterit
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
-      - S3_SECRET_KEY=${S3_SECRET_KEY}
-      - S3_BUCKET=${S3_BUCKET}
-      - S3_REGION=${S3_REGION}
-      - S3_USE_SSL=${S3_USE_SSL}
-      - S3_SIGNATURE_VERSION=${S3_SIGNATURE_VERSION}
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://frontend
-    volumes:
-      - ./backend:/app
+  app:
+    build: .
     restart: unless-stopped
-    networks:
-      - burnafterit-network
+    env_file: .env
+    environment:
+      # multi-host hosts override these via .env; all-in-one uses the
+      # compose-internal service names
+      DATABASE_URL: ${DATABASE_URL:-postgres://burnafter:${POSTGRES_PASSWORD}@postgres:5432/burnafter}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    ports:
+      - "${PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
+      redis:
         condition: service_started
-        required: false
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/utils/health"]
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: burnafterit-frontend
-    ports:
-      - "3000:80"
-    environment:
-      - VITE_API_URL=http://localhost:5000
-      - VITE_APP_URL=http://localhost:3000
-    depends_on:
-      - backend
+  postgres:
+    image: postgres:16-bookworm
     restart: unless-stopped
-    networks:
-      - burnafterit-network
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-burnafter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-burnafter}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-burnafter} -d ${POSTGRES_DB:-burnafter}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    # no ports: — internal network only in all-in-one mode.
+    # multi-host: uncomment and firewall to app hosts only.
+    # ports:
+    #   - "5432:5432"
 
-networks:
-  burnafterit-network:
-    driver: bridge
+  redis:
+    image: redis:7-bookworm
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    # sessions/limits only: redis is disposable by design (design §5)
 
 volumes:
-  postgres_data:
-    driver: local
-  minio_data:
-    driver: local
+  pgdata:
