@@ -25,6 +25,29 @@ TEXT_CAP_BYTES = 10 * 1024          # design §6.4: text 10KB
 MAXHITS_MIN, MAXHITS_MAX = 1, 100   # design §6.1
 MAXTIME_MIN, MAXTIME_MAX = 1, 1440  # locked: 1 min .. 24 h
 
+# Per-type upload caps + magic-byte allowlist (design §4.3):
+# the server derives mime from the DECLARED type + actual bytes;
+# client filenames never touch storage.
+MEDIA_SPECS = {
+    "photo": (5 * 1024 * 1024, ("image/jpeg", "image/png")),
+    "audio": (25 * 1024 * 1024, ("audio/wav",)),
+    "video": (50 * 1024 * 1024, ("video/mp4",)),
+}
+ALLOWED_MIMES = {m for _, mimes in MEDIA_SPECS.values() for m in mimes}
+
+
+def _sniff_mime(data: bytes) -> str | None:
+    """Magic-byte allowlist — no content-type trust, no blacklist regex."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return "audio/wav"
+    if data[4:8] == b"ftyp":
+        return "video/mp4"
+    return None
+
 
 def now_utc() -> datetime.datetime:
     """Naive UTC 'now' — the ONLY time representation in v2-mono."""
@@ -215,8 +238,64 @@ def create_app(config_overrides=None):
 
         return jsonify(url=f"/stream_any/text/{shout_hash}")
 
-    @app.get("/stream_any/text/<shout_hash>")
-    def stream_text(shout_hash):
+    @app.post("/post/<posttype>")
+    def post_media(posttype):
+        if posttype not in MEDIA_SPECS or posttype == "text":
+            return jsonify(error="unsupported content type"), 404
+        cap, allowed = MEDIA_SPECS[posttype]
+
+        try:
+            maxhits, maxtime = _parse_limits(request.form)
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+
+        f = request.files.get("data")
+        if f is None:
+            return jsonify(error="missing data file"), 400
+
+        # NOTE (design §5, stream-not-buffer): the read below is bounded
+        # by the per-type cap; bytea INSERT requires the whole payload.
+        data = f.stream.read(cap + 1)
+        if len(data) > cap:
+            return jsonify(error=f"{posttype} exceeds the size cap"), 413
+        if not data:
+            return jsonify(error="empty upload"), 400
+
+        mime = _sniff_mime(data)
+        if mime is None or mime not in allowed:
+            return jsonify(error="content does not match the declared type"), 415
+
+        shout_hash = "h" + secrets.token_hex(16)
+        storage_key = "s" + secrets.token_hex(16)
+        expires_at = now_utc() + datetime.timedelta(minutes=maxtime)
+
+        conn = _connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    _INSERT_SHOUT_SQL,
+                    (shout_hash, storage_key, posttype, maxhits, expires_at),
+                )
+                cur.execute(
+                    _INSERT_BLOB_SQL,
+                    (storage_key, mime, len(data), data),
+                )
+            conn.commit()
+        except Exception:  # noqa: BLE001
+            conn.rollback()
+            app.logger.exception("create %s shout failed", posttype)
+            return jsonify(error="could not store the shout"), 500
+        finally:
+            conn.close()
+
+        return jsonify(url=f"/stream_any/{posttype}/{shout_hash}")
+
+    @app.get("/stream_any/<posttype>/<shout_hash>")
+    def stream_any(posttype, shout_hash):
+        valid_types = ("text",) + tuple(MEDIA_SPECS)
+        if posttype not in valid_types:
+            return jsonify(error="unsupported content type"), 404
+
         conn = _connect()
         try:
             if not claim(conn, shout_hash):
@@ -231,6 +310,11 @@ def create_app(config_overrides=None):
                     )
                     return jsonify(error="storage error"), 500
                 content, mime = row
+
+            if posttype != "text" and mime not in ALLOWED_MIMES:
+                # defense-in-depth: only the create path writes mimes
+                app.logger.error("shout %r has bad mime %r", shout_hash, mime)
+                return jsonify(error="storage error"), 500
 
             _log_hit(conn, shout_hash)
             return Response(bytes(content), mimetype=mime)
