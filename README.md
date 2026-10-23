@@ -65,6 +65,10 @@ export DATABASE_URL=postgres://... REDIS_URL=redis://... SECRET_KEY=...
 - `POST /post/text` — form: `data` (≤10KB), `maxhits` (1–100), `maxtime` (minutes, 1–1440) → `{"url": "/stream_any/text/<hash>"}`
 - `POST /post/{photo|audio|video}` — multipart `data` file (5/25/50MB caps, magic-byte verified) + same limits → `{"url": ...}`
 - `GET /stream_any/<type>/<hash>` — THE claim: serves content or 404 "Burned!"
+
+Media serves as a single full response — no Range/seek support. A
+player's probe or seek requests each consume a hit, so watch/listen
+in one go: single-shot playback is by design (v2-mono phase 1).
 - `GET /health` — `{"db": "ok", "redis": "ok|absent"}`
 
 Every served byte carries `X-Robots-Tag: noindex, noarchive` +
