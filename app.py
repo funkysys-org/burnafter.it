@@ -275,16 +275,20 @@ def _burned_response():
 def create_app(config_overrides=None):
     """Application factory — stateless; all state in Postgres/Redis."""
     app = Flask(__name__)
+    # 12-factor: every knob comes from the environment unless an
+    # explicit override is passed (tests do that).
+    import os
+
     app.config.update(
-        DATABASE_URL=None,  # must be provided (env or override)
-        SECRET_KEY=None,
+        DATABASE_URL=os.environ.get("DATABASE_URL"),
+        SECRET_KEY=os.environ.get("SECRET_KEY"),
+        REDIS_URL=os.environ.get("REDIS_URL"),
+        RATE_LIMIT=os.environ.get("RATE_LIMIT", 10),
+        RATE_WINDOW=os.environ.get("RATE_WINDOW", 60),
     )
     if config_overrides:
         app.config.update(config_overrides)
-    import os
 
-    if not app.config["DATABASE_URL"]:
-        app.config["DATABASE_URL"] = os.environ.get("DATABASE_URL")
     if not app.config["DATABASE_URL"]:
         raise RuntimeError(
             "DATABASE_URL is required (Postgres holds all state in v2-mono)"
