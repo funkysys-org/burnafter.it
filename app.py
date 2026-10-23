@@ -15,13 +15,15 @@ House rules (design §3/§4):
 """
 
 import datetime
+import io
 import secrets
 import threading
 import time
 
 import psycopg
 import psycopg.sql
-from flask import Flask, Response, jsonify, request
+import qrcode
+from flask import Flask, Response, jsonify, render_template, request
 
 TEXT_CAP_BYTES = 10 * 1024          # design §6.4: text 10KB
 MAXHITS_MIN, MAXHITS_MAX = 1, 100   # design §6.1
@@ -341,6 +343,25 @@ def create_app(config_overrides=None):
             status["redis"] = "ok" if rl.redis.ping() else "error"
         return jsonify(status), (200 if status["db"] == "ok" else 503)
 
+    @app.get("/")
+    def home():
+        return render_template("home.html")
+
+    @app.get("/message")
+    def message_form():
+        return render_template("message.html")
+
+    @app.get("/get_qrimg/<posttype>/<shout_hash>")
+    def qr_img(posttype, shout_hash):
+        """QR for a capability URL. Renders the URL only — never the hash
+        alone with attacker-controlled prefix (v1 lesson)."""
+        buf = io.BytesIO()
+        img = qrcode.make(request.host_url.rstrip("/") + f"/stream_any/{posttype}/{shout_hash}")
+        img.save(buf)
+        buf.seek(0)
+        return Response(buf, mimetype="image/png",
+                        headers={"X-Robots-Tag": "noindex, noarchive"})
+
     @app.post("/post/text")
     def post_text():
         if not rate_limiter.allow(request.remote_addr or "unknown"):
@@ -461,7 +482,13 @@ def create_app(config_overrides=None):
                 return jsonify(error="storage error"), 500
 
             _log_hit(conn, shout_hash)
-            return Response(bytes(content), mimetype=mime)
+            resp = Response(bytes(content), mimetype=mime)
+            # Anti-preview as METADATA (design §4.2): possession of the
+            # URL is the capability; robots directives keep preview bots
+            # from archiving what the referrer gate failed to protect.
+            resp.headers["X-Robots-Tag"] = "noindex, noarchive"
+            resp.headers["Cache-Control"] = "no-store"
+            return resp
         finally:
             conn.close()
 

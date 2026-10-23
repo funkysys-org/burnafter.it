@@ -1,28 +1,50 @@
-{% set active_page = 'message' %}
-{% extends 'base5.html' %}
-{% block title %} Shout {% endblock %}
-<!--{% block bgimage %}/static/img/jpg{% endblock %}-->
-{% block content %}
-</br><p>
-</br><p>
-<div class="container" >
-<h2 style="text-align: center;">Share Ephemeral Content</h2>
-<form action="/post" method="post">
-<input type="hidden" name="maxhits" value="1">
-<input type="hidden" name="maxtime" value="60">
-	<div style="padding: 20px; text-align: center;">
-<button type=submit class="btn shadow-none border-0" name="mediatype" value="audio">
-         <i class="fa fa-microphone fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
-</button>
-<button type=submit class="btn shadow-none border-0" name="mediatype" value="text">
-         <i class="fa fa-pencil fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
-</button>
-<button type=submit class="btn shadow-none border-0" name="mediatype" value="photo" disabled>
-         <i class="fa fa-camera-retro fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
-</button>
-<button type=submit class="btn shadow-none border-0" name="mediatype" value="video" disabled>
-         <i class="fa fa-video-camera fa-5x" aria-hidden="true" style="color: white; padding: 4px;"></i>
-</button>
-</form>
+{% extends "base.html" %}
+{% block title %}BurnAfterIt — New Shout{% endblock %}
+{% block body %}
+<div class="shout-form">
+  <h2>Share Ephemeral Content</h2>
+  <form id="shout-form"
+        action="/post/text" method="post" enctype="multipart/form-data">
+    <label for="data">Text</label>
+    <textarea id="data" name="data" maxlength="10240" required></textarea>
+
+    <label for="maxhits">Burn after (views)</label>
+    <input id="maxhits" name="maxhits" type="number" min="1" max="100" value="1" required>
+
+    <label for="maxtime">Or after (minutes)</label>
+    <input id="maxtime" name="maxtime" type="number" min="1" max="1440" value="240" required>
+
+    <button type="submit">Burn it after reading</button>
+  </form>
+  <p class="hint">Text shouts only in phase 1 — photo, audio, video via the API.</p>
 </div>
+
+<script>
+function showResult(url) {
+  const box = document.createElement('div');
+  box.className = 'shout-result';
+  const link = document.createElement('a');
+  link.href = url;
+  link.textContent = url;
+  box.appendChild(link);
+  const img = document.createElement('img');
+  img.src = '/get_qrimg/text/' + url.split('/').pop();
+  img.alt = 'QR code for the shout URL';
+  img.width = 220;
+  box.appendChild(img);
+  document.querySelector('.shout-form').replaceWith(box);
+}
+
+document.getElementById('shout-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+  const body = await res.json().catch(() => null);
+  if (res.ok && body && body.url) {
+    showResult(location.origin + body.url);
+  } else {
+    alert((body && body.error) || 'Upload failed');
+  }
+});
+</script>
 {% endblock %}
