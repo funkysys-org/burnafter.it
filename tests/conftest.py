@@ -75,7 +75,7 @@ def api(db):
     flask_app = app_mod.create_app(
         {
             "TESTING": True,
-            "SECRET_KEY": "test-key",
+            "SECRET_KEY": "test-key-0123456789abcdef0123456789abcdef",
             "DATABASE_URL": db.info.dsn,
         }
     )

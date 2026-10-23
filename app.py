@@ -122,6 +122,38 @@ def get_shout(conn, shout_hash: str):
         return dict(zip(cols, row))
 
 
+# Two-phase GC, phase 2 — the reaper:
+#   1. flip: expired-but-active rows become inactive (burned_at set)
+#   2. delete: inactive rows past the grace period are physically
+#      removed; blobs go with them via ON DELETE CASCADE
+_REAP_FLIP_SQL = """
+UPDATE shouts
+   SET is_active = FALSE,
+       burned_at = COALESCE(burned_at, %s)
+ WHERE is_active
+   AND expires_at <= %s
+"""
+
+_REAP_DELETE_SQL = """
+DELETE FROM shouts
+ WHERE NOT is_active
+   AND burned_at <= %s
+"""
+
+
+def reap(conn, grace: datetime.timedelta = datetime.timedelta(hours=1)):
+    """Sweep pass. Returns (flipped, deleted). Never touches live rows."""
+    now = now_utc()
+    with conn.cursor() as cur:
+        cur.execute(_REAP_FLIP_SQL, (now, now))
+        flipped = cur.rowcount
+        cutoff = now - grace
+        cur.execute(_REAP_DELETE_SQL, (cutoff,))
+        deleted = cur.rowcount
+    conn.commit()
+    return flipped, deleted
+
+
 # ─── Flask application factory (slice 2) ──────────────────────────────────────
 
 _INSERT_SHOUT_SQL = """
@@ -196,6 +228,17 @@ def create_app(config_overrides=None):
     if not app.config["DATABASE_URL"]:
         raise RuntimeError(
             "DATABASE_URL is required (Postgres holds all state in v2-mono)"
+        )
+
+    # Boot-guard (design §4.5/6a): the per-process SECRET_KEY of v1 is
+    # the tombstone — fail loud on missing/weak/default session keys.
+    secret = app.config.get("SECRET_KEY")
+    known_weak = {"change-me-in-production", "change-me-in-prod", "test-key"}
+    if not secret or secret in known_weak or len(str(secret)) < 32:
+        raise RuntimeError(
+            "SECRET_KEY is missing, too short (<32 chars), or a known "
+            "default — provide a strong key via the environment; "
+            "v2-mono refuses to boot on weak session keys."
         )
 
     def _connect():
