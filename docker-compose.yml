@@ -11,6 +11,26 @@
 #     docker compose up -d --no-deps app
 
 services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${PORT:-8000}:8080"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    # NOTE: the published PORT now maps to WEB (nginx:8080), which
+    # proxies the API to app:8000 — single origin, no CORS.
+
   app:
     build: .
     restart: unless-stopped
@@ -20,8 +40,8 @@ services:
       # compose-internal service names
       DATABASE_URL: ${DATABASE_URL:-postgres://burnafter:${POSTGRES_PASSWORD}@postgres:5432/burnafter}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-    ports:
-      - "${PORT:-8000}:8000"
+      # nginx sets X-Forwarded-For — the app may trust it
+      TRUSTED_PROXY: "1"
     depends_on:
       postgres:
         condition: service_healthy

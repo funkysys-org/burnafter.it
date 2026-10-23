@@ -1,0 +1,12 @@
+# burnafter.it v2-mono web tier — Radio Puppa 2006 SPA
+# Serves the Vite build; proxies the API to the app service.
+# Single origin: the SPA fetches same-origin paths — no CORS anywhere.
+
+FROM nginxinc/nginx-unprivileged@sha256:f9dfa9c20b2b0b7c5cc830374f22f23dee3f750b6c5291ca7e0330b5c88e6403
+
+# nginx-unprivileged:1.27-bookworm, digest-pinned (design §5)
+
+COPY web/dist /usr/share/nginx/html
+COPY web/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 8080
