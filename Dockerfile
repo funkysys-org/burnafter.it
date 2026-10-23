@@ -15,7 +15,12 @@ COPY static/ static/
 RUN useradd --system --no-create-home burnafter
 USER burnafter
 
-ENV HOST=0.0.0.0 PORT=8000
+ENV PORT=8000
 EXPOSE 8000
 
-CMD ["sh", "-c", "exec gunicorn --bind ${HOST}:${PORT} --workers 2 --threads 4 --timeout 60 app:create_app()"]
+# Exec form, NO shell: Debian's /bin/sh is dash and parses '(' in
+# "app:create_app()" as a syntax error — the container never reached
+# gunicorn. The app object comes from passenger_wsgi:application
+# (create_app() at import; also keeps the shim honest in-container).
+# The internal bind is fixed; compose maps the variable host port.
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "60", "passenger_wsgi:application"]

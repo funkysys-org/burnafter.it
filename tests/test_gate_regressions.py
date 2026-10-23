@@ -110,6 +110,29 @@ def test_cleanup_cli_rejects_unknown_args(db, monkeypatch):
     assert "usage" in (proc.stderr + proc.stdout).lower()
 
 
+# ── Deployment-seam regression: the container CMD must be exec-form ────
+
+def test_dockerfile_cmd_is_exec_form_no_shell():
+    """Gate lesson: 'sh -c ... app:create_app()' — dash parses the bare
+    '(' as a syntax error and the container never boots. Exec form only.
+    """
+    import json
+    import os
+
+    path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "Dockerfile",
+    )
+    with open(path) as fh:
+        lines = fh.read().splitlines()
+    cmd = [l for l in lines if l.startswith("CMD")]
+    assert len(cmd) == 1
+    assert "sh" not in cmd[0], "no shell in CMD — dash broke create_app()"
+    args = json.loads(cmd[0][4:])
+    assert args[0] == "gunicorn", "CMD must exec gunicorn directly"
+    assert "passenger_wsgi:application" in args
+
+
 # ── Major #4: quickstart env shape ──────────────────────────────────────
 
 def test_env_example_does_not_ship_a_broken_default():
