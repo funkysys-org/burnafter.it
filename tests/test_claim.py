@@ -9,7 +9,7 @@ import datetime as dt
 
 import psycopg
 
-from app import claim, get_shout, now_utc
+from app import claim, now_utc
 
 
 def test_claim_wins_and_increments(db, make_shout):
@@ -74,12 +74,6 @@ def test_claim_is_atomic_under_concurrency(db, make_shout):
         "SELECT current_hits FROM shouts WHERE hash = %s", (h,)
     ).fetchone()
     assert row[0] == 3
-
-
-def test_get_shout_serves_only_active_and_unexpired(db, make_shout):
-    h = make_shout(shout_type="text", max_hits=2)
-    row = get_shout(db, h)
-    assert row is not None and row["shout_type"] == "text"
 
 
 def test_now_utc_is_naive():

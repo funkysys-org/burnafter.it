@@ -27,6 +27,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 30s
@@ -38,7 +42,8 @@ services:
       options: {max-size: "10m", max-file: "3"}
 
   postgres:
-    image: postgres:16-bookworm
+    image: postgres@sha256:d81f7b51697014367236d07ec58b54153fc28f828b72bf247fe5c7487520bcb0
+    # postgres:16-bookworm, digest-pinned (design §5)
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-burnafter}
@@ -61,7 +66,8 @@ services:
     #   - "5432:5432"
 
   redis:
-    image: redis:7-bookworm
+    image: redis@sha256:44960b3100c48159a66d28c18b0588c193492e25f7551d60e51dd464fc3eca5b
+    # redis:7-bookworm, digest-pinned (design §5)
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     logging:

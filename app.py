@@ -34,7 +34,7 @@ MAXTIME_MIN, MAXTIME_MAX = 1, 1440  # locked: 1 min .. 24 h
 # client filenames never touch storage.
 MEDIA_SPECS = {
     "photo": (5 * 1024 * 1024, ("image/jpeg", "image/png")),
-    "audio": (25 * 1024 * 1024, ("audio/wav",)),
+    "audio": (25 * 1024 * 1024, ("audio/wav", "audio/mpeg", "audio/mp4")),
     "video": (50 * 1024 * 1024, ("video/mp4",)),
 }
 ALLOWED_MIMES = {m for _, mimes in MEDIA_SPECS.values() for m in mimes}
@@ -48,8 +48,11 @@ def _sniff_mime(data: bytes) -> str | None:
         return "image/png"
     if data[:4] == b"RIFF" and data[8:12] == b"WAVE":
         return "audio/wav"
+    if data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
+        return "audio/mpeg"  # ID3-tagged or raw-frame MP3 (gate minor #8)
     if data[4:8] == b"ftyp":
-        return "video/mp4"
+        brand = data[8:12]
+        return "audio/mp4" if brand in (b"M4A ", b"M4B ") else "video/mp4"
     return None
 
 
@@ -79,15 +82,6 @@ UPDATE shouts
    AND is_active
 """
 
-_SERVE_SQL = """
-SELECT hash, storage_key, shout_type, max_hits, current_hits,
-       is_active, created_at, expires_at
-  FROM shouts
- WHERE hash = %s
-   AND is_active
-   AND expires_at > %s
-"""
-
 
 def claim(conn, shout_hash: str) -> bool:
     """Atomically consume one of the shout's max_hits view slots.
@@ -111,25 +105,12 @@ def claim(conn, shout_hash: str) -> bool:
     return False
 
 
-def get_shout(conn, shout_hash: str):
-    """Serve-side metadata lookup: only active, unexpired shouts.
-
-    Returns a dict (or None). The capability decision is claim()'s;
-    this only reads what a winner may be served.
-    """
-    with conn.cursor() as cur:
-        cur.execute(_SERVE_SQL, (shout_hash, now_utc()))
-        row = cur.fetchone()
-        if row is None:
-            return None
-        cols = [d.name for d in cur.description]
-        return dict(zip(cols, row))
-
-
 # Two-phase GC, phase 2 — the reaper:
 #   1. flip: expired-but-active rows become inactive (burned_at set)
 #   2. delete: inactive rows past the grace period are physically
 #      removed; blobs go with them via ON DELETE CASCADE
+#   3. prune: hit_logs older than 7 days (gate minor #7 — no FK to
+#      shouts, so the reaper owns their GC too)
 _REAP_FLIP_SQL = """
 UPDATE shouts
    SET is_active = FALSE,
@@ -144,9 +125,15 @@ DELETE FROM shouts
    AND burned_at <= %s
 """
 
+_REAP_PRUNE_LOGS_SQL = """
+DELETE FROM hit_logs
+ WHERE claimed_at <= %s
+"""
+
 
 def reap(conn, grace: datetime.timedelta = datetime.timedelta(hours=1)):
-    """Sweep pass. Returns (flipped, deleted). Never touches live rows."""
+    """Sweep pass. Returns (flipped, deleted, logs_pruned). Never
+    touches live rows."""
     now = now_utc()
     with conn.cursor() as cur:
         cur.execute(_REAP_FLIP_SQL, (now, now))
@@ -154,8 +141,11 @@ def reap(conn, grace: datetime.timedelta = datetime.timedelta(hours=1)):
         cutoff = now - grace
         cur.execute(_REAP_DELETE_SQL, (cutoff,))
         deleted = cur.rowcount
+        log_cutoff = now - datetime.timedelta(days=7)
+        cur.execute(_REAP_PRUNE_LOGS_SQL, (log_cutoff,))
+        pruned = cur.rowcount
     conn.commit()
-    return flipped, deleted
+    return flipped, deleted, pruned
 
 
 # ─── Rate limiting: Redis when configured, in-process fallback if not ─────────
@@ -285,6 +275,12 @@ def create_app(config_overrides=None):
         REDIS_URL=os.environ.get("REDIS_URL"),
         RATE_LIMIT=os.environ.get("RATE_LIMIT", 10),
         RATE_WINDOW=os.environ.get("RATE_WINDOW", 60),
+        # Design §6.4: global ceiling — Flask rejects oversized bodies
+        # PRE-READ (gate major #1); per-type caps then narrow further.
+        MAX_CONTENT_LENGTH=50 * 1024 * 1024,
+        # Gate major #5: opt-in — only behind a trusted proxy does the
+        # app key rate limits on X-Forwarded-For instead of proxy IP.
+        TRUSTED_PROXY=os.environ.get("TRUSTED_PROXY", "0"),
     )
     if config_overrides:
         app.config.update(config_overrides)
@@ -323,6 +319,13 @@ def create_app(config_overrides=None):
             app.logger.warning(
                 "Redis session backend unavailable — cookie sessions"
             )
+
+    if str(app.config.get("TRUSTED_PROXY", "0")) == "1":
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        # Keying stays on remote_addr — ProxyFix rewrites it from the
+        # trusted proxy's X-Forwarded-For (gate major #5).
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
     rate_limiter = RateLimiter(app)
     app.extensions["rate_limiter"] = rate_limiter
@@ -377,6 +380,8 @@ def create_app(config_overrides=None):
 
         data = request.form.get("data", "")
         encoded = data.encode("utf-8")
+        if not encoded:
+            return jsonify(error="empty shout"), 400
         if len(encoded) > TEXT_CAP_BYTES:
             return jsonify(error="text exceeds the 10KB cap"), 413
 
@@ -492,6 +497,12 @@ def create_app(config_overrides=None):
             # from archiving what the referrer gate failed to protect.
             resp.headers["X-Robots-Tag"] = "noindex, noarchive"
             resp.headers["Cache-Control"] = "no-store"
+            # Gate major #3: untrusted bytes served inline — kill the
+            # browser-sniffing residual and cage any active content.
+            resp.headers["X-Content-Type-Options"] = "nosniff"
+            resp.headers["Content-Security-Policy"] = (
+                "default-src 'none'; img-src 'self' data:; media-src 'self'"
+            )
             return resp
         finally:
             conn.close()
@@ -515,15 +526,18 @@ def _cli_cleanup() -> int:
         )
         return 2
     with psycopg.connect(dsn) as conn:
-        flipped, deleted = reap(conn)
-    print(f"reaped: {flipped} flipped, {deleted} deleted")
+        flipped, deleted, pruned = reap(conn)
+    print(
+        f"reaped: {flipped} flipped, {deleted} deleted, "
+        f"{pruned} hit-logs pruned"
+    )
     return 0
 
 
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) >= 2 and sys.argv[1] == "cleanup":
+    if len(sys.argv) == 2 and sys.argv[1] == "cleanup":
         sys.exit(_cli_cleanup())
     print("usage: python -m app [cleanup]", file=sys.stderr)
     sys.exit(64)
