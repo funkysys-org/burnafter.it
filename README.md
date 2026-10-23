@@ -52,6 +52,11 @@ keys are rejected). Postgres runs the schema on first boot via
 3. DNS round-robin the app hostname across the app hosts. Done —
    the app tier holds no state.
 
+**Multi-host caveat:** `TRUSTED_PROXY=1` is correct for the all-in-one
+stack (nginx fronts the app). An app-only replica NOT fronted by the
+web tier must override `TRUSTED_PROXY=0` in its `.env` — otherwise it
+trusts client-supplied `X-Forwarded-For` for rate-limit keying.
+
 ## Passenger (deploy-agnostic re-entry)
 
 ```bash

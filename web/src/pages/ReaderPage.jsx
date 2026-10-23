@@ -123,7 +123,7 @@ export default function ReaderPage() {
         </h1>
         <p className="dim" style={{ margin: "12px 0" }}>
           {meta
-            ? `Opening burns 1 of ${meta.views_left + 1} views · tape expires in ${left}.`
+            ? `Opening burns 1 of ${meta.views_left} views · tape expires in ${left}.`
             : "Opening this link might be the last play. No counter, no clock — the link is all there is."}
         </p>
         <button className="bevel primary" style={{ fontSize: 15 }}
@@ -146,7 +146,7 @@ export default function ReaderPage() {
         <div style={{ display: "flex", gap: 8, justifyContent: "center",
                       margin: "14px 0", flexWrap: "wrap" }}>
           <span className="chip live"><span className="lamp blink" /> ON AIR — PLAYING</span>
-          <span className="chip ok">{meta.views_left} OF {meta.views_left + 1} PLAYS LEFT</span>
+          <span className="chip ok">{meta.views_left - 1} OF {meta.max_hits} PLAYS LEFT</span>
           <span className="chip neutral">BURNS IN {left}</span>
         </div>
       )}

@@ -93,7 +93,13 @@ export default function CreatorPage() {
         };
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            resolve(JSON.parse(xhr.responseText).url);
+            // The API returns the RAW /stream_any URL. For HUMANS the
+            // branded gated reader is the destination — rewrite it
+            // (gate major #1: shared/copied/QR links must open the
+            // gate, not silently burn a view). Raw clients use the
+            // API URL directly; it keeps working untouched.
+            const raw = JSON.parse(xhr.responseText).url;
+            resolve(raw.replace(/^\/stream_any\//, "/read/"));
           } else {
             let msg = "could not store the shout";
             try { msg = JSON.parse(xhr.responseText).error || msg; } catch {}

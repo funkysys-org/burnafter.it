@@ -370,9 +370,12 @@ def create_app(config_overrides=None):
                         headers={"X-Robots-Tag": "noindex, noarchive"})
 
     _META_SQL = """
-SELECT shout_type, max_hits - current_hits AS views_left, expires_at
+SELECT shout_type, max_hits, max_hits - current_hits AS views_left,
+       expires_at
   FROM shouts
- WHERE hash = %s AND is_active AND expires_at > %s
+ WHERE hash = %s AND is_active
+   AND current_hits < max_hits
+   AND expires_at > %s
 """
 
     @app.get("/meta/<posttype>/<shout_hash>")
@@ -380,7 +383,9 @@ SELECT shout_type, max_hits - current_hits AS views_left, expires_at
         """NON-CONSUMING metadata for the reader gate (spec §6).
 
         Reads only — never claims, never logs, never flips. Uniform
-        404 {"error": ...} for burned/expired/never-existed: no leak.
+        404 {"error": ...} for burned/expired/consumed/never-existed:
+        no leak which (a fully-consumed-but-unflipped row 404s too —
+        gate major #2). views_left ALREADY includes the next view.
         """
         with _connect() as conn:
             with conn.cursor() as cur:
@@ -388,9 +393,10 @@ SELECT shout_type, max_hits - current_hits AS views_left, expires_at
                 row = cur.fetchone()
                 if row is None:
                     return jsonify(error="no such shout"), 404
-                shout_type, views_left, expires_at = row
+                shout_type, max_hits, views_left, expires_at = row
         return jsonify(
             type=shout_type,
+            max_hits=max_hits,
             views_left=views_left,
             expires_at=expires_at.isoformat() + "Z",
         )

@@ -75,6 +75,61 @@ def test_meta_does_not_consume(db, shout_url):
     assert db.execute("SELECT count(*) FROM hit_logs").fetchone()[0] == 0
 
 
+def test_meta_consumed_but_unflipped_is_404(db):
+    """Gate major #2: a shout whose views are ALL consumed but whose row
+    the reaper hasn't flipped yet (up to the 1h grace) must look
+    EXACTLY like burned/expired/nonexistent to /meta — uniform 404.
+    (The old suite only tested the flipped state: coverage gap.)
+    """
+    from app import create_app
+
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test-key-0123456789abcdef0123456789abcdef",
+            "DATABASE_URL": db.info.dsn,
+        }
+    )
+    with app.test_client() as c:
+        r = c.post(
+            "/post/text", data={"data": "x", "maxhits": "2", "maxtime": "60"}
+        )
+        h = r.get_json()["url"].rsplit("/", 1)[1]
+        assert c.get(f"/stream_any/text/{h}").status_code == 200  # claim 1
+        assert c.get(f"/stream_any/text/{h}").status_code == 200  # claim 2
+        # row is now fully consumed but NOT yet flipped by a failed claim
+        row = db.execute(
+            "SELECT is_active, current_hits, max_hits FROM shouts WHERE hash=%s",
+            (h,),
+        ).fetchone()
+        assert row == (True, 2, 2)  # the window: consumed, unflipped
+        m = c.get(f"/meta/text/{h}")
+        assert m.status_code == 404
+        assert set(m.get_json().keys()) == {"error"}
+
+
+def test_meta_includes_max_hits_for_display_arithmetic(db):
+    """Gate minor #3: the SPA needs max_hits — views_left already
+    INCLUDES the next view, so displays must not add +1."""
+    from app import create_app
+
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test-key-0123456789abcdef0123456789abcdef",
+            "DATABASE_URL": db.info.dsn,
+        }
+    )
+    with app.test_client() as c:
+        r = c.post(
+            "/post/text", data={"data": "x", "maxhits": "3", "maxtime": "60"}
+        )
+        h = r.get_json()["url"].rsplit("/", 1)[1]
+        body = c.get(f"/meta/text/{h}").get_json()
+        assert body["max_hits"] == 3
+        assert body["views_left"] == 3  # fresh shout: left == max, no +1
+
+
 def test_meta_burned_is_uniform_404(db):
     """Burned, expired, and nonexistent must look identical — no leak."""
     from app import create_app
