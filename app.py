@@ -493,3 +493,33 @@ def create_app(config_overrides=None):
             conn.close()
 
     return app
+
+
+# ─── CLI: cleanup is a PROCESS, never an unauthenticated HTTP route ───────────
+
+def _cli_cleanup() -> int:
+    """Run the reaper. cron/systemd/container-friendly: exits 0/1."""
+    import os
+    import sys
+
+    dsn = os.environ.get("DATABASE_URL")
+    if not dsn:
+        print(
+            "DATABASE_URL is not set — point me at the Postgres that "
+            "holds the state (see .env.example).",
+            file=sys.stderr,
+        )
+        return 2
+    with psycopg.connect(dsn) as conn:
+        flipped, deleted = reap(conn)
+    print(f"reaped: {flipped} flipped, {deleted} deleted")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) >= 2 and sys.argv[1] == "cleanup":
+        sys.exit(_cli_cleanup())
+    print("usage: python -m app [cleanup]", file=sys.stderr)
+    sys.exit(64)
