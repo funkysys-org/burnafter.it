@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { ThemeSwitch } from "../theme";
 
 export const reduced = () =>
   window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -11,9 +12,13 @@ export function Masthead() {
       <div className="big" style={{ fontSize: "clamp(20px,5vw,30px)" }}>
         burnafter·it
       </div>
-      <span className="chip live">
-        <span className="lamp blink" /> ON AIR SINCE 2006
-      </span>
+      <div style={{ display: "flex", gap: 8, alignItems: "center",
+                    flexWrap: "wrap" }}>
+        <ThemeSwitch />
+        <span className="chip live">
+          <span className="lamp blink" /> ON AIR SINCE 2006
+        </span>
+      </div>
     </header>
   );
 }

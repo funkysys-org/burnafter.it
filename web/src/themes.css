@@ -1,0 +1,100 @@
+/* burnafter.it v2-mono — theme layer (A: token switcher)
+   Three skins on the Radio Puppa 2006 structure. Tokens extracted
+   verbatim from @pixel's three locked mockups (01-ember-terminal,
+   02-radio-puppa-2006 = DEFAULT, 03-warm-paper). Switching sets
+   data-theme on <html>; every structural class reads vars only. */
+
+/* ── THEME TOKENS ──────────────────────────────────────────────── */
+
+:root, [data-theme="radio-puppa"] {
+  /* 02 Radio Puppa 2006 — paper & ink, radius 0, hard shadows */
+  --paper: #f7efdc;
+  --paper-lines: linear-gradient(rgba(38, 32, 26, 0.045) 1px, transparent 1px) 0 0 / 100% 28px;
+  --panel-bg: #fff8e9;
+  --ink: #26201a;
+  --dim: #6b5d4b;
+  --orange: #ff4d00;         /* accent fills, ink text on top */
+  --orange-text: #26201a;
+  --red: #d62209;
+  --red-text: #fff8e9;
+  --green: #1a7f37;
+  --green-text: #fff8e9;
+  --blue: #23548f;
+  --headline-accent: #e63e00;
+  --lcd-bg: #c9e265;
+  --lcd-ink: #1c2b12;
+  --lcd-over: #f3b5a5;
+  --border: #26201a;
+  --bevel-light: #fffdf5;    /* bevel input top/left */
+  --hard-shadow: 4px 4px 0 var(--border);
+  --hard-shadow-sm: 3px 3px 0 var(--border);
+  --chip-shadow: 2px 2px 0 var(--border);
+  --press-shadow: 0 0 0 var(--border);
+  --r-card: 0px;
+  --r-ctl: 0px;
+  --display-font: 'Silkscreen', monospace;
+  --body-font: Verdana, Tahoma, Geneva, sans-serif;
+  --mono-font: 'VT323', monospace;
+}
+
+[data-theme="ember"] {
+  /* 01 Ember Terminal — near-black, one ember accent, soft depth */
+  --paper: #0e0c0a;
+  --paper-lines: none;
+  --panel-bg: #171310;
+  --ink: #f5ede4;
+  --dim: #a89a8c;
+  --orange: #ff6a2b;
+  --orange-text: #1a0e06;
+  --red: #ff5a36;
+  --red-text: #0e0c0a;
+  --green: #8fce91;
+  --green-text: #0e0c0a;
+  --blue: #ffb38a;
+  --headline-accent: #ff6a2b;
+  --lcd-bg: #241709;
+  --lcd-ink: #ffd9a8;
+  --lcd-over: #472112;
+  --border: #2a221c;
+  --bevel-light: #1f1915;
+  --hard-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --hard-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --chip-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  --press-shadow: 0 0 0 transparent;
+  --r-card: 14px;
+  --r-ctl: 10px;
+  --display-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --body-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono-font: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+[data-theme="warm"] {
+  /* 03 Warm Paper — cream, serif display, soft radii */
+  --paper: #faf6ef;
+  --paper-lines: none;
+  --panel-bg: #ffffff;
+  --ink: #3a322a;
+  --dim: #7a6e5f;
+  --orange: #c9420c;         /* accent-strong: fills with white label */
+  --orange-text: #ffffff;
+  --red: #c9420c;
+  --red-text: #ffffff;
+  --green: #1d7a4f;
+  --green-text: #ffffff;
+  --blue: #b23c10;
+  --headline-accent: #e8551e;
+  --lcd-bg: #fdeee4;
+  --lcd-ink: #b23c10;
+  --lcd-over: #f6d8c8;
+  --border: #e7ddcc;
+  --bevel-light: #ffffff;
+  --hard-shadow: 0 1px 2px rgba(58, 50, 42, 0.05), 0 8px 24px rgba(58, 50, 42, 0.06);
+  --hard-shadow-sm: 0 1px 2px rgba(58, 50, 42, 0.05), 0 6px 16px rgba(58, 50, 42, 0.06);
+  --chip-shadow: 0 1px 2px rgba(58, 50, 42, 0.06);
+  --press-shadow: 0 0 0 transparent;
+  --r-card: 18px;
+  --r-ctl: 12px;
+  --display-font: 'Fraunces', Georgia, serif;
+  --body-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono-font: ui-monospace, Menlo, Consolas, monospace;
+}

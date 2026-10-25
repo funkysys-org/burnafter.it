@@ -205,7 +205,7 @@ export default function CreatorPage() {
               onChange={(e) => setText(e.target.value)}
               placeholder="say it once… (≤ 10 KB)" />
             <div className="lcd" style={{ display: "inline-block", marginTop: 6,
-                     background: over ? "#f3b5a5" : undefined }}>
+                     background: over ? "var(--lcd-over)" : undefined }}>
               {new Blob([text]).size} / 10240 BYTES
             </div>
           </div>
