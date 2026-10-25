@@ -39,6 +39,12 @@ MEDIA_SPECS = {
 }
 ALLOWED_MIMES = {m for _, mimes in MEDIA_SPECS.values() for m in mimes}
 
+# MP4-family codec 4CCs — the reliable audio-vs-video discriminator.
+# Brand lists lie (Android/encoder m4a = isom brands, no M4A marker);
+# the codec boxes in the buffer do not.
+_AUDIO_CODECS = (b"mp4a", b"alac", b"Opus", b"samr", b"ac-3", b"ec-3")
+_VIDEO_CODECS = (b"avc1", b"avc3", b"hev1", b"hvc1", b"mp4v", b"encv", b"av01")
+
 
 def _sniff_mime(data: bytes) -> str | None:
     """Magic-byte allowlist — no content-type trust, no blacklist regex."""
@@ -53,12 +59,19 @@ def _sniff_mime(data: bytes) -> str | None:
     if data[4:8] == b"ftyp":
         # The ftyp box carries the MAJOR brand + COMPATIBLE brands.
         # Real-world .m4a files often have major brand 'isom'/'mp42'
-        # with M4A only among the compatible brands — scan ALL of them
-        # (maintainer live-report: isom-major m4a was misread as video).
-        # brands = size(4) 'ftyp'(4) major(4) minor(4) then compat…
+        # with M4A only among the compatible brands — scan ALL of them.
         size = int.from_bytes(data[0:4], "big")
         box = data[8:min(max(size, 16), 64)]
         if b"M4A " in box or b"M4B " in box or b"M4P " in box:
+            return "audio/mp4"
+        # Brand lists are still not enough: Android/encoder .m4a files
+        # carry plain isom brands with NO M4A marker — the audio codec
+        # (mp4a et al.) lives in the moov/stsd boxes, anywhere in the
+        # buffer. Classify by CODECS; a video codec always wins
+        # (video-with-sound is a video, not an audio).
+        if any(c in data for c in _VIDEO_CODECS):
+            return "video/mp4"
+        if any(c in data for c in _AUDIO_CODECS):
             return "audio/mp4"
         return "video/mp4"
     return None
@@ -477,7 +490,14 @@ SELECT shout_type, max_hits, max_hits - current_hits AS views_left,
 
         mime = _sniff_mime(data)
         if mime is None or mime not in allowed:
-            return jsonify(error="content does not match the declared type"), 415
+            detected = mime or "unknown"
+            return jsonify(
+                error=(
+                    f"content does not match the declared type "
+                    f"(detected: {detected}; expected one of: "
+                    f"{', '.join(allowed)})"
+                )
+            ), 415
 
         shout_hash = "h" + secrets.token_hex(16)
         storage_key = "s" + secrets.token_hex(16)
