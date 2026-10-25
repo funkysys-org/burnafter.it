@@ -51,8 +51,16 @@ def _sniff_mime(data: bytes) -> str | None:
     if data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
         return "audio/mpeg"  # ID3-tagged or raw-frame MP3 (gate minor #8)
     if data[4:8] == b"ftyp":
-        brand = data[8:12]
-        return "audio/mp4" if brand in (b"M4A ", b"M4B ") else "video/mp4"
+        # The ftyp box carries the MAJOR brand + COMPATIBLE brands.
+        # Real-world .m4a files often have major brand 'isom'/'mp42'
+        # with M4A only among the compatible brands — scan ALL of them
+        # (maintainer live-report: isom-major m4a was misread as video).
+        # brands = size(4) 'ftyp'(4) major(4) minor(4) then compat…
+        size = int.from_bytes(data[0:4], "big")
+        box = data[8:min(max(size, 16), 64)]
+        if b"M4A " in box or b"M4B " in box or b"M4P " in box:
+            return "audio/mp4"
+        return "video/mp4"
     return None
 
 
