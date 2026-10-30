@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { reduced } from "./HomePage";
+import {
+  autoBurnFor,
+  remainingSeconds,
+} from "../autoburn";
 
 function fmtLeft(iso) {
   const ms = new Date(iso).getTime() - Date.now();
@@ -33,8 +37,10 @@ export default function ReaderPage() {
   const [contentUrl, setContentUrl] = useState("");
   const [textContent, setTextContent] = useState("");
   const [left, setLeft] = useState("");
-  const [auto, setAuto] = useState(8);
+  const [auto, setAuto] = useState(8);          // countdown shown in the LCD
+  const [fuse, setFuse] = useState(null);        // null = manual-only
   const burnedRef = useRef(false);
+  const mediaRef = useRef(null);                 // <audio>/<video> element
 
   // feature-detect the non-consuming metadata endpoint (spec §6)
   useEffect(() => {
@@ -83,16 +89,41 @@ export default function ReaderPage() {
     }, reduced() ? 50 : 1500);
   }
 
-  // auto-burn 8s countdown (reveal)
+  // auto-burn fuse (maintainer-locked policy):
+  //   text/photo -> fixed 8s wall-clock countdown
+  //   audio/video -> PLAYBACK-LINKED: duration + 5s; pausing the player
+  //                 pauses the fuse; unreadable duration -> manual-only
   useEffect(() => {
     if (phase !== "reveal" || reduced()) return;
-    setAuto(8);
+    if (type === "audio" || type === "video") {
+      setFuse("media");          // fuse value set on metadata load
+      setAuto(null);             // hidden until duration is known
+      return;                    // ticking handled by onTimeUpdate
+    }
+    const f = autoBurnFor(type, null);
+    setFuse("static");
+    setAuto(f);
     const iv = setInterval(() => setAuto((n) => {
       if (n <= 1) { clearInterval(iv); burn(); return 0; }
       return n - 1;
     }), 1000);
     return () => clearInterval(iv);
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function onMediaMeta(e) {
+    const d = e.target.duration;
+    const f = autoBurnFor(type, isFinite(d) ? d : null);
+    if (f === null) { setFuse(null); setAuto(null); return; } // manual-only
+    setAuto(remainingSeconds(isFinite(d) ? d : 0, 0) ?? f);
+  }
+
+  function onMediaTime(e) {
+    const el = e.target;
+    if (!isFinite(el.duration) || el.duration <= 0) return;
+    const r = remainingSeconds(el.duration, el.currentTime);
+    setAuto(r);
+    if (r === 0) burn();
+  }
 
   if (phase === "burned") return <BurnedScreen meta={meta} />;
 
@@ -167,9 +198,15 @@ export default function ReaderPage() {
           ) : type === "photo" ? (
             <img src={contentUrl} alt="the shout" style={{ maxWidth: "100%" }} />
           ) : type === "audio" ? (
-            <audio controls src={contentUrl} style={{ width: "100%" }} />
+            <audio ref={mediaRef} controls src={contentUrl}
+                   style={{ width: "100%" }}
+                   onLoadedMetadata={onMediaMeta}
+                   onTimeUpdate={onMediaTime} />
           ) : (
-            <video controls src={contentUrl} style={{ maxWidth: "100%" }} />
+            <video ref={mediaRef} controls src={contentUrl}
+                   style={{ maxWidth: "100%" }}
+                   onLoadedMetadata={onMediaMeta}
+                   onTimeUpdate={onMediaTime} />
           )}
         </div>
         <p className="dim small">
@@ -180,9 +217,18 @@ export default function ReaderPage() {
         <div style={{ margin: "18px 0", display: "flex", gap: 10,
                       justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
           <button className="bevel" onClick={burn}>🔥 BURN IT NOW</button>
-          {!reduced() && <span className="lcd" style={{ fontSize: 14 }}>
-            AUTO-BURN IN {auto}s
-          </span>}
+          {!reduced() && fuse !== null && auto !== null && (
+            <span className="lcd" style={{ fontSize: 14 }}>
+              {fuse === "media"
+                ? `AUTO-BURN WITH PLAYBACK · ${auto}s LEFT`
+                : `AUTO-BURN IN ${auto}s`}
+            </span>
+          )}
+          {!reduced() && fuse === null && (
+            <span className="lcd" style={{ fontSize: 14 }}>
+              MANUAL BURN ONLY — NO TIMER ON THIS TAPE
+            </span>
+          )}
         </div>
       )}
     </main>
