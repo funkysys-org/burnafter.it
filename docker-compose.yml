@@ -78,6 +78,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - ./schema-live.sql:/docker-entrypoint-initdb.d/schema-live.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-burnafter} -d ${POSTGRES_DB:-burnafter}"]
       interval: 10s

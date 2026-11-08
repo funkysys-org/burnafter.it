@@ -7,7 +7,7 @@ WORKDIR /srv/app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py schema.sql passenger_wsgi.py ./
+COPY app.py live.py schema.sql schema-live.sql passenger_wsgi.py ./
 COPY templates/ templates/
 COPY static/ static/
 
