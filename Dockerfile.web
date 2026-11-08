@@ -1,12 +1,27 @@
 # burnafter.it v2-mono web tier — Radio Puppa 2006 SPA
-# Serves the Vite build; proxies the API to the app service.
-# Single origin: the SPA fetches same-origin paths — no CORS anywhere.
+# Multi-stage: the bundle is BUILT from source inside the image, so the
+# served artifact always matches the pulled code. (The old single-stage
+# COPY web/dist required a locally-built dist that git never ships —
+# the maintainer's deploy kept serving a stale bundle.)
 
+# ── stage 1: build the SPA from source ──────────────────────────────────
+FROM node@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
+# node:22-bookworm-slim, digest-pinned (design §5)
+
+WORKDIR /build
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY web/vite.config.js web/index.html ./
+COPY web/src ./src
+
+RUN npm run build
+
+# ── stage 2: nginx serves the fresh build ───────────────────────────────
 FROM nginxinc/nginx-unprivileged@sha256:f9dfa9c20b2b0b7c5cc830374f22f23dee3f750b6c5291ca7e0330b5c88e6403
-
 # nginx-unprivileged:1.27-bookworm, digest-pinned (design §5)
 
-COPY web/dist /usr/share/nginx/html
+COPY --from=0 /build/dist /usr/share/nginx/html
 COPY web/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080
