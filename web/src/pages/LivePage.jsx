@@ -13,7 +13,9 @@ function fmtFuse(iso) {
 
 export default function LivePage() {
   const { hash } = useParams();
-  const [phase, setPhase] = useState("gate"); // gate|onair|burned|full|error
+  const [phase, setPhase] = useState("gate"); // gate|onair|burned|full|error|unsupported
+  const phaseRef = useRef("gate");            // always-fresh phase for
+  useEffect(() => { phaseRef.current = phase; }, [phase]); // closures/timers
   const [meta, setMeta] = useState(null);
   const [fuse, setFuse] = useState("");
   const [nick] = useState(() => "Listener-" + String(Math.floor(1000 + Math.random() * 9000)));
@@ -52,7 +54,10 @@ export default function LivePage() {
       playerRef.current = p;
       p.start();
       const tick = setInterval(async () => {
-        if (phase !== "onair") { clearInterval(tick); return; }
+        // phaseRef, NOT phase: the closure's `phase` is frozen at "gate"
+        // and killed the tick on its first fire — the chat silently
+        // never polled (live-reported; gate minor #10 was not cosmetic)
+        if (phaseRef.current !== "onair") { clearInterval(tick); return; }
         try {
           const r = await fetch(`/live/${hash}/chat?after=${lastIdRef.current}`);
           if (r.status === 404) { clearInterval(tick); setPhase("burned"); return; }
