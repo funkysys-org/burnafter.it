@@ -62,6 +62,72 @@ def test_web_image_builds_from_source_not_a_gitignored_dist():
     assert "npm run build" in df, "the bundle must be built inside the image"
 
 
+def test_no_spa_page_route_is_swallowed_by_the_api_proxy():
+    """nginx regex locations evaluate in FILE ORDER — first match wins.
+    Any SPA page path whose FIRST matching location is the API proxy
+    gets sent to Flask and 404s (live-reported twice: /read in the 1.5
+    gate, /live/<hash> on the production deploy). Faithful simulation:
+    parse every location, evaluate in file order, and assert that for
+    each SPA page URL the winning location serves the SPA, not the
+    proxy."""
+    import re
+
+    with open(os.path.join(REPO, "web", "nginx.conf")) as fh:
+        conf = fh.read()
+
+    # (kind, pattern, has_proxy_pass) in FILE ORDER
+    locations = []
+    for m in re.finditer(
+        r"location\s+(~|=)?\s*([^\s{]+)\s*\{(.*?)\n    \}", conf, re.S
+    ):
+        modifier, pattern, body = m.group(1), m.group(2), m.group(3)
+        locations.append(
+            {
+                "exact": modifier == "=",
+                "regex": modifier == "~",
+                "pattern": pattern.rstrip("} ").strip(),
+                "proxy": "proxy_pass" in body,
+                "start": m.start(),
+            }
+        )
+
+    spa_urls = [
+        "/",
+        "/create",
+        "/studio",
+        "/read/text/habc123def456",
+        "/live/L79263f881e087c2d41943a585f3ee343",
+    ]
+    problems = []
+    for url in spa_urls:
+        winner = None
+        for loc in locations:  # file order = nginx evaluation order
+            if loc["exact"]:
+                if url == loc["pattern"].lstrip("="):
+                    winner = loc
+                    break
+            elif loc["regex"]:
+                try:
+                    if re.search(loc["pattern"], url):
+                        winner = loc
+                        break
+                except re.error:
+                    pass
+            else:  # prefix
+                if url.startswith(loc["pattern"]):
+                    winner = loc
+                    break
+        if winner is None:
+            continue  # falls to nginx defaults (SPA) — acceptable
+        if winner["proxy"]:
+            problems.append(url)
+    assert not problems, (
+        f"SPA page URL(s) routed to the API proxy (Flask 404s): {problems} — "
+        "each needs a dedicated location BEFORE the API regex, or the API "
+        "regex must not match it (nginx: first regex match in file order wins)"
+    )
+
+
 def test_compose_mounts_both_schemas_for_fresh_volumes():
     with open(os.path.join(REPO, "docker-compose.yml")) as fh:
         compose = fh.read()
