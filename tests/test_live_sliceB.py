@@ -17,10 +17,44 @@ def _push(live_api, h, token, data=b"\x1aE\xdf\xa3" + b"\x00" * 60):
     )
 
 
+def test_save_after_end_the_ui_order(live_api, session):
+    """StudioPage order: END the session, THEN the SAVE button appears.
+    The backend used to 404 the save because _get_live_session excludes
+    ended rows — and END also deleted the Redis ring, so the audio was
+    gone even if the 404 were fixed (live-reported on the production
+    deploy). Save must work on a manually-ended, unexpired session,
+    exactly once; the ring survives END (TTL-bounded) for that."""
+    h, token = session["h"], session["token"]
+    assert _push(live_api, h, token).status_code == 200
+
+    end = live_api.post(f"/live/{h}/end", query_string={"token": token})
+    assert end.status_code == 200
+    # listeners still see uniform burned
+    assert live_api.get(f"/live/{h}/meta").status_code == 404
+
+    save = live_api.post(
+        f"/live/{h}/save",
+        query_string={"token": token},
+        json={"maxhits": 3, "maxtime": 60},
+    )
+    assert save.status_code == 200, save.get_data(as_text=True)
+    assert save.get_json()["url"].startswith("/read/audio/")
+
+    # second save: the ring is consumed -> uniform 404
+    again = live_api.post(
+        f"/live/{h}/save",
+        query_string={"token": token},
+        json={"maxhits": 3, "maxtime": 60},
+    )
+    assert again.status_code == 404
+
+
 def test_save_as_shout_creates_normal_shout(live_api, session):
     h, token = session["h"], session["token"]
     _push(live_api, h, token, b"\x1aE\xdf\xa3AUDIOCHUNK1" + b"\x00" * 40)
     _push(live_api, h, token, b"\x1aE\xdf\xa3AUDIOCHUNK2" + b"\x00" * 40)
+    # contract (UI order): END first, then SAVE
+    live_api.post(f"/live/{h}/end", query_string={"token": token})
 
     r = live_api.post(
         f"/live/{h}/save",
@@ -47,7 +81,13 @@ def test_save_as_shout_creates_normal_shout(live_api, session):
 
 
 def test_save_requires_token(live_api, session):
-    r = live_api.post(f"/live/{session['h']}/save", json={})
+    h, token = session["h"], session["token"]
+    # before END: save 404s uniformly (the session is not saveable yet)
+    r0 = live_api.post(f"/live/{h}/save", json={})
+    assert r0.status_code == 404
+    # after END: token is enforced (401 without it)
+    live_api.post(f"/live/{h}/end", query_string={"token": token})
+    r = live_api.post(f"/live/{h}/save", json={})
     assert r.status_code == 401
 
 

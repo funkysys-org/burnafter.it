@@ -81,6 +81,24 @@ def _get_live_session(cur, h):
     return cur.fetchone()
 
 
+def _get_session_for_save(cur, h):
+    """Save's contract: a session the creator manually ENDED (the UI
+    order: END -> SAVE button) is saveable until its fuse expires;
+    an expired/heartbeat-dead/nonexistent one is not. Live listeners
+    never see this row — every listener route stays on the uniform
+    burned 404."""
+    cur.execute(
+        """SELECT id, source_token, saved_shout_hash, expires_at
+             FROM live_sessions
+            WHERE hash = %s
+              AND ended_at IS NOT NULL
+              AND expires_at > %s
+              AND saved_shout_hash IS NULL""",
+        (h, now_utc()),
+    )
+    return cur.fetchone()
+
+
 @live.post("/live")
 def create_session():
     # gate major #1a: anonymous create is THE entry — rate-limit it
@@ -281,8 +299,11 @@ def live_end(h):
             )
     r = _r()
     if r is not None:
-        r.delete(f"live:{h}", f"live-hb:{h}", f"live-n:{h}")
-        # seats can't exist without Redis — sweep inside the guard
+        r.delete(f"live-hb:{h}", f"live-n:{h}")
+        # gate-major-#3 fix + save-after-end: the RING SURVIVES END —
+        # the creator's SAVE button (UI order: END then SAVE) needs the
+        # chunks. TTL still bounds it (max fuse), so ephemerality holds:
+        # unsaved audio dies with the Redis key, never later.
         for key in r.keys(f"seat:{h}:*") or []:
             r.delete(key)
     return jsonify(ended=True)
@@ -291,20 +312,21 @@ def live_end(h):
 @live.post("/live/<h>/save")
 def live_save(h):
     """Explicit creator choice (#3): concatenate the buffered chunks into
-    a NORMAL audio shout with a normal fuse. Chunks are consumed; the
-    session ends. Only the source token may call it. NOTE (minor #8):
-    independent webm clusters concatenate mostly-cleanly — minor glitches
-    possible near chunk boundaries; documented at the SAVE button."""
+    a NORMAL audio shout with a normal fuse. Works on a manually-ENDED,
+    unexpired session (the StudioPage order: END -> SAVE), exactly once.
+    Only the source token may call it. NOTE (minor #8): independent webm
+    clusters concatenate mostly-cleanly — minor glitches possible near
+    chunk boundaries; documented at the SAVE button."""
     import secrets as _secrets
 
     token = request.args.get("token", "")
     with _connect() as conn:
         with conn.cursor() as cur:
-            row = _get_live_session(cur, h)
+            row = _get_session_for_save(cur, h)
             if row is None:
-                return _burned()
-            sid, real_token, _cap, _exp = row
-            if not _token_ok(token, real_token):
+                return _burned()  # expired / never existed / already saved
+            sid, real_token_hash, _saved, _exp = row
+            if not _token_ok(token, real_token_hash):
                 return jsonify(error="bad or missing source token"), 401
 
     body = request.get_json(silent=True) or {}

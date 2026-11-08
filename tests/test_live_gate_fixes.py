@@ -248,6 +248,8 @@ def test_webm_sniffed_and_accepted_everywhere(live_db):
             data={"data": (io.BytesIO(webm), "c.webm")},
             content_type="multipart/form-data",
         )
+        # contract (UI order): END first, then SAVE
+        c.post(f"/live/{h}/end", query_string={"token": tok})
         saved = c.post(
             f"/live/{h}/save?token={tok}",
             json={"maxhits": 3, "maxtime": 60},
