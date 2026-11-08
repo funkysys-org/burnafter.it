@@ -282,8 +282,9 @@ def live_end(h):
     r = _r()
     if r is not None:
         r.delete(f"live:{h}", f"live-hb:{h}", f"live-n:{h}")
-    for key in r.keys(f"seat:{h}:*") if r.keys(f"seat:{h}:*") else []:
-        r.delete(key)
+        # seats can't exist without Redis — sweep inside the guard
+        for key in r.keys(f"seat:{h}:*") or []:
+            r.delete(key)
     return jsonify(ended=True)
 
 

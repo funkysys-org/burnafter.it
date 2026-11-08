@@ -171,6 +171,22 @@ def test_poll_renews_seat(live_db):
         assert rr.ttl(f"seat:{h}:{seat}") > 10  # renewed by participation
 
 
+# ── re-gate finding: END in the no-Redis degraded mode ──────────────────
+
+def test_end_works_without_redis(live_db, monkeypatch):
+    """The degraded path (no REDIS_URL) is a real configuration — END
+    must 200, not 500 (the seat-sweep once sat outside the guard)."""
+    app = _app(live_db)
+    app.config["REDIS_URL"] = None  # degraded: no Redis at all
+    with app.test_client() as c:
+        b = _create(c).get_json()
+        h, tok = b["session_hash"], b["token"]
+        assert c.get(f"/live/{h}/join").status_code == 200  # degraded join
+        r = c.post(f"/live/{h}/end", query_string={"token": tok})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert c.get(f"/live/{h}/meta").status_code == 404  # uniform burned
+
+
 # ── minor #4: source token stored hashed ────────────────────────────────
 
 def test_source_token_stored_hashed(live_db):
