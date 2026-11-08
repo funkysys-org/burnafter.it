@@ -100,7 +100,7 @@ def test_listener_cap_enforced_on_join(live_api, live_db):
 
     first = live_api.get(f"/live/{h}/join")
     assert first.status_code == 200
-    assert first.get_json()["seat"] is True
+    assert isinstance(first.get_json()["seat"], str)
 
     second = live_api.get(f"/live/{h}/join")
     assert second.status_code == 409

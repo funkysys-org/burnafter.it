@@ -72,9 +72,10 @@ export class LiveSource {
 
 // Listener side: poll segments and keep an MSE buffer fed.
 export class LivePlayer {
-  constructor(hash, audioEl) {
+  constructor(hash, audioEl, seat) {
     this.hash = hash;
     this.el = audioEl;
+    this.seat = seat || "";   // renewed by poll participation (seats expire)
     this.seq = 0;
     this.mediaSource = null;
     this.sourceBuffer = null;
@@ -84,11 +85,18 @@ export class LivePlayer {
   }
 
   async start() {
+    // gate minor #5: honest degradation — can this browser tune in at all?
+    const MIME = "audio/webm; codecs=opus";
+    if (typeof MediaSource === "undefined" || !MediaSource.isTypeSupported(MIME)) {
+      this.unsupported = true;
+      this.onUnsupported?.();
+      return;
+    }
     this.running = true;
     this.mediaSource = new MediaSource();
     this.el.src = URL.createObjectURL(this.mediaSource);
     this.mediaSource.addEventListener("sourceopen", () => {
-      this.sourceBuffer = this.mediaSource.addSourceBuffer("audio/webm; codecs=opus");
+      this.sourceBuffer = this.mediaSource.addSourceBuffer(MIME);
       this.sourceBuffer.addEventListener("updateend", () => this._drain());
     });
     this.timer = setInterval(() => this._poll(), 2000);
@@ -98,7 +106,10 @@ export class LivePlayer {
   async _poll() {
     if (!this.running) return;
     try {
-      const r = await fetch(`/live/${this.hash}/poll?after=${this.seq}`);
+      const u = new URL(`/live/${this.hash}/poll`, location.origin);
+      u.searchParams.set("after", this.seq);
+      if (this.seat) u.searchParams.set("seat", this.seat);  // seat renewal
+      const r = await fetch(u);
       if (r.status === 404) {
         this.stop();
         this.onEnded?.();

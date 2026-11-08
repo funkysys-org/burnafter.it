@@ -43,11 +43,12 @@ export default function LivePage() {
     const jr = await fetch(`/live/${hash}/join`);
     if (jr.status === 409) { setPhase("full"); return; }
     if (jr.status === 404) { setPhase("burned"); return; }
+    const seat = (await jr.json()).seat || "";
     setPhase("onair");
-    // start player + chat tail after mount
     setTimeout(async () => {
-      const p = new LivePlayer(hash, audioRef.current);
+      const p = new LivePlayer(hash, audioRef.current, seat);
       p.onEnded = () => setPhase("burned");
+      p.onUnsupported = () => setPhase("unsupported");  // honest degrade
       playerRef.current = p;
       p.start();
       const tick = setInterval(async () => {
@@ -97,6 +98,20 @@ export default function LivePage() {
         <h1 style={{ fontFamily: "var(--display-font)" }}>ALL SEATS TAKEN</h1>
         <p className="dim" style={{ margin: "12px 0" }}>
           the session is full — the tape has no seats left
+        </p>
+        <Link to="/" className="bevel">BACK TO STUDIO</Link>
+      </main>
+    );
+  }
+
+  if (phase === "unsupported") {
+    return (
+      <main style={{ textAlign: "center", padding: "60px 0" }}>
+        <div style={{ fontSize: 64 }}>⚠</div>
+        <h1 style={{ fontFamily: "var(--display-font)" }}>CAN'T TUNE IN</h1>
+        <p className="dim" style={{ margin: "12px 0", maxWidth: 460 }}>
+          this browser can't play the live stream — the chat below still
+          works on a device that supports it. Sorry, puppa.
         </p>
         <Link to="/" className="bevel">BACK TO STUDIO</Link>
       </main>
@@ -160,6 +175,9 @@ export default function LivePage() {
                  placeholder="say it to the room (≤ 500 chars)" />
           <button className="bevel" type="submit" disabled={!draft.trim()}>SAY</button>
         </form>
+        <p className="dim small" style={{ marginTop: 6 }}>
+          anonymous · nicknames cap at 32 chars · messages die with the session
+        </p>
       </section>
     </main>
   );

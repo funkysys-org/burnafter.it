@@ -34,7 +34,7 @@ MAXTIME_MIN, MAXTIME_MAX = 1, 1440  # locked: 1 min .. 24 h
 # client filenames never touch storage.
 MEDIA_SPECS = {
     "photo": (5 * 1024 * 1024, ("image/jpeg", "image/png")),
-    "audio": (25 * 1024 * 1024, ("audio/wav", "audio/mpeg", "audio/mp4")),
+    "audio": (25 * 1024 * 1024, ("audio/wav", "audio/mpeg", "audio/mp4", "audio/webm")),
     "video": (50 * 1024 * 1024, ("video/mp4",)),
 }
 ALLOWED_MIMES = {m for _, mimes in MEDIA_SPECS.values() for m in mimes}
@@ -56,6 +56,8 @@ def _sniff_mime(data: bytes) -> str | None:
         return "audio/wav"
     if data[:3] == b"ID3" or data[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
         return "audio/mpeg"  # ID3-tagged or raw-frame MP3 (gate minor #8)
+    if data[:4] == b"\x1aE\xdf\xa3":
+        return "audio/webm"  # EBML — MediaRecorder output (live gate minor #6)
     if data[4:8] == b"ftyp":
         # The ftyp box carries the MAJOR brand + COMPATIBLE brands.
         # Real-world .m4a files often have major brand 'isom'/'mp42'
@@ -597,6 +599,15 @@ def _cli_cleanup() -> int:
         f"reaped: {flipped} flipped, {deleted} deleted, "
         f"{pruned} hit-logs pruned"
     )
+    # live sessions: heartbeat-death sweep (30s silence -> ended)
+    from live import reap_dead_live
+
+    redis_url = os.environ.get("REDIS_URL")
+    with psycopg.connect(dsn) as conn:
+        if redis_url:
+            os.environ.setdefault("REDIS_URL", redis_url)
+        reaped_live = reap_dead_live(conn)
+    print(f"reaped: {reaped_live} live session(s) — heartbeat death")
     return 0
 
 

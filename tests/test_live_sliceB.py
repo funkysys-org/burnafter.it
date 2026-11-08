@@ -39,7 +39,7 @@ def test_save_as_shout_creates_normal_shout(live_api, session):
     first = live_api.get(raw)
     assert first.status_code == 200
     assert b"AUDIOCHUNK1" in first.data and b"AUDIOCHUNK2" in first.data
-    assert first.mimetype == "audio/mp4"  # sniffed from bytes (webm->mp4 family)
+    assert first.mimetype == "audio/webm"  # sniffed honestly (MediaRecorder output)
 
     # session is ENDED after save: uniform burned
     m = live_api.get(f"/live/{h}/meta")
@@ -54,18 +54,24 @@ def test_save_requires_token(live_api, session):
 def test_heartbeat_death_ends_session(live_api, live_db, session):
     import redis as redis_lib
 
+    from live import CREATE_GRACE_S, HEARTBEAT_S
+
     h, token = session["h"], session["token"]
-    # simulate: source pushed once (heartbeat set), then died
+    r = redis_lib.from_url("redis://localhost:6379/15")
+
+    # hb TTL semantics (gate major #2): bounded grace, 30s per push
+    assert 0 < r.ttl(f"live-hb:{h}") <= CREATE_GRACE_S
     assert _push(live_api, h, token).status_code == 200
+    assert 0 < r.ttl(f"live-hb:{h}") <= HEARTBEAT_S
 
     from live import reap_dead_live
 
     # heartbeat alive -> not reaped
     assert reap_dead_live(live_db) == 0
 
-    # kill the heartbeat key (simulate 30s of silence)
-    r = redis_lib.from_url("redis://localhost:6379/15")
-    r.delete(f"live-hb:{h}")
+    # TTL lapse — NO manual delete: shorten and let it EXPIRE
+    r.expire(f"live-hb:{h}", 1)
+    time.sleep(1.2)
     reaped = reap_dead_live(live_db)
     assert reaped >= 1
     m = live_api.get(f"/live/{h}/meta")

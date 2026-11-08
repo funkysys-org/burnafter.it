@@ -8,6 +8,7 @@ session expiry) — never Postgres, never disk.
 """
 
 import datetime
+import hashlib
 import hmac
 import secrets
 
@@ -23,15 +24,34 @@ from flask import Blueprint, current_app, jsonify, request
 live = Blueprint("live", __name__)
 
 MAX_HOURS = 24
-HEARTBEAT_S = 30
+HEARTBEAT_S = 30          # gate major #2: hb TTL — the death that's real
+CREATE_GRACE_S = 300      # mic-permission grace before the first push
+SEAT_TTL_S = 35           # gate major #3: seats lapse; polls renew them
 SEG_CAP = 64 * 1024
 SEG_TTL_FALLBACK_S = 120
+RING_MAX_CHUNKS = 600     # gate major #1b: ~30min of 3s audio, then LTRIM
+POLL_MAX_SEGS = 20        # gate major #1c: ~60s per poll response window
 
 _redis_clients = {}
 
 
+def _cfg(name, default):
+    return current_app.config.get(name) or default
+
+
+def _rate_limiter():
+    return current_app.extensions.get("rate_limiter")
+
+
 def _r():
-    url = current_app.config.get("REDIS_URL")
+    from flask import has_app_context
+
+    if has_app_context():
+        url = current_app.config.get("REDIS_URL")
+    else:
+        import os
+
+        url = os.environ.get("REDIS_URL")  # CLI context (cleanup cycle)
     if not url:
         return None
     # cache per URL: test apps with different REDIS_URL must not share
@@ -63,6 +83,10 @@ def _get_live_session(cur, h):
 
 @live.post("/live")
 def create_session():
+    # gate major #1a: anonymous create is THE entry — rate-limit it
+    rl = _rate_limiter()
+    if rl is not None and not rl.allow(request.remote_addr or "unknown"):
+        return jsonify(error="too many requests"), 429
     body = request.get_json(silent=True) or {}
     try:
         hours = float(body.get("maxhours", MAX_HOURS))
@@ -81,6 +105,9 @@ def create_session():
 
     h = "L" + secrets.token_hex(16)
     token = secrets.token_hex(32)
+    # gate minor #4: store the HASH, never the raw token (constant-time
+    # compare below works identically against the hash)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
     expires_at = now_utc() + datetime.timedelta(hours=hours)
 
     with _connect() as conn:
@@ -89,15 +116,15 @@ def create_session():
                 """INSERT INTO live_sessions
                        (hash, source_token, listener_cap, expires_at)
                    VALUES (%s, %s, %s, %s) RETURNING id""",
-                (h, token, cap, expires_at),
+                (h, token_hash, cap, expires_at),
             )
             (sid,) = cur.fetchone()
 
     r = _r()
     if r is not None:
-        ttl = int((expires_at - now_utc()).total_seconds()) + 60
-        r.set(f"live-hb:{h}", "1", ex=ttl)
-        r.set(f"live-n:{h}", 0, ex=ttl)
+        # gate major #2: hb dies HEARTBEAT_S after the last push —
+        # create gets the bounded mic-permission grace, pushes renew 30s
+        r.set(f"live-hb:{h}", "1", ex=CREATE_GRACE_S)
 
     return jsonify(
         listener_url=f"/live/{h}",   # SPA live page (gate: ON AIR)
@@ -107,13 +134,18 @@ def create_session():
     )
 
 
-def _token_ok(provided: str, real: str) -> bool:
+def _token_ok(provided: str, real_hash: str) -> bool:
+    """Constant-time compare of the provided RAW token against the
+    stored SHA-256 (gate minor #4: PG never holds the raw token)."""
     if not provided:
         return False
     try:
+        provided_hash = hashlib.sha256(
+            provided.encode("utf-8", "surrogatepass")
+        ).hexdigest()
         return hmac.compare_digest(
-            provided.encode("utf-8", "surrogatepass"),
-            real.encode("utf-8", "surrogatepass"),
+            provided_hash.encode(),
+            real_hash.encode("utf-8", "surrogatepass"),
         )
     except Exception:  # noqa: BLE001 — reject, never 500 on crafted input
         return False
@@ -149,12 +181,17 @@ def live_join(h):
             sid, _tok, cap, _exp = row
     r = _r()
     if r is None:  # no Redis: no seat accounting — allow (degrade honestly)
-        return jsonify(seat=True, listeners=0)
-    n = r.incr(f"live-n:{h}")
+        return jsonify(seat="", listeners=0)
+    # gate major #3: SEATS EXPIRE. Each join gets a TTL seat key
+    # (renewed by poll participation); listeners = live seat count.
+    seat_ttl = int(_cfg("SEAT_TTL_S", SEAT_TTL_S))
+    seat = secrets.token_hex(8)
+    r.set(f"seat:{h}:{seat}", "1", ex=seat_ttl)
+    n = len(r.keys(f"seat:{h}:*"))
     if cap is not None and n > cap:
-        r.decr(f"live-n:{h}")
+        r.delete(f"seat:{h}:{seat}")  # the overflow seat never counted
         return jsonify(error="session is full — the tape has no seats left"), 409
-    return jsonify(seat=True, listeners=n)
+    return jsonify(seat=seat, listeners=n)
 
 
 @live.post("/live/<h>/seg")
@@ -187,8 +224,11 @@ def live_seg(h):
         SEG_TTL_FALLBACK_S,
     )
     seq = int(r.rpush(f"live:{h}", data) or 1)
+    # gate major #1b: ring budget — keep only the last RING_MAX_CHUNKS
+    r.ltrim(f"live:{h}", -int(_cfg("RING_MAX_CHUNKS", RING_MAX_CHUNKS)), -1)
     r.expire(f"live:{h}", ttl)
-    r.set(f"live-hb:{h}", "1", ex=ttl)  # every push IS a heartbeat
+    # gate major #2: every push renews the 30s heartbeat
+    r.set(f"live-hb:{h}", "1", ex=HEARTBEAT_S)
     return jsonify(seq=seq)
 
 
@@ -208,10 +248,18 @@ def live_poll(h):
     r = _r()
     if r is None:
         return jsonify(error="live storage unavailable"), 503
+    # gate major #3: poll participation renews the caller's seat
+    seat = request.args.get("seat", "")
+    if seat:
+        seat_ttl = int(_cfg("SEAT_TTL_S", SEAT_TTL_S))
+        r.expire(f"seat:{h}:{seat}", seat_ttl)
+    # gate major #1c: bounded response window — a late joiner gets the
+    # last POLL_MAX_SEGS segments, not the whole ring
     length = int(r.llen(f"live:{h}") or 0)
+    start = max(after, length - int(_cfg("POLL_MAX_SEGS", POLL_MAX_SEGS)))
     segs = []
-    if length > after:
-        raw = r.lrange(f"live:{h}", after, -1)
+    if length > start:
+        raw = r.lrange(f"live:{h}", start, -1)
         segs = [base64.b64encode(b).decode("ascii") for b in raw]
     return jsonify(seq=length, segments=segs)
 
@@ -234,6 +282,8 @@ def live_end(h):
     r = _r()
     if r is not None:
         r.delete(f"live:{h}", f"live-hb:{h}", f"live-n:{h}")
+    for key in r.keys(f"seat:{h}:*") if r.keys(f"seat:{h}:*") else []:
+        r.delete(key)
     return jsonify(ended=True)
 
 
@@ -241,7 +291,9 @@ def live_end(h):
 def live_save(h):
     """Explicit creator choice (#3): concatenate the buffered chunks into
     a NORMAL audio shout with a normal fuse. Chunks are consumed; the
-    session ends. Only the source token may call it."""
+    session ends. Only the source token may call it. NOTE (minor #8):
+    independent webm clusters concatenate mostly-cleanly — minor glitches
+    possible near chunk boundaries; documented at the SAVE button."""
     import secrets as _secrets
 
     token = request.args.get("token", "")
@@ -278,8 +330,8 @@ def live_save(h):
     import datetime as _dt
 
     mime = _sniff_mime(data)
-    if mime not in ("audio/mp4", "audio/mpeg", "audio/wav"):
-        mime = "audio/mp4"  # recorded streams are audio; best-effort label
+    if mime not in ("audio/mp4", "audio/mpeg", "audio/wav", "audio/webm"):
+        mime = "audio/webm"  # MediaRecorder output; honest label (minor #6)
 
     shout_hash = "h" + _secrets.token_hex(16)
     storage_key = "s" + _secrets.token_hex(16)
@@ -313,8 +365,11 @@ def live_save(h):
 
 @live.post("/live/<h>/say")
 def live_say(h):
-    """Anonymous chat on the live session (#phase-2 ride-along).
-    Messages die with the session (FK cascade)."""
+    # gate minor #7: anonymous chat throttled per SESSION+IP (a separate
+    # bucket from /live create — talking shouldn't eat the go-live quota)
+    rl = _rate_limiter()
+    if rl is not None and not rl.allow(f"say:{h}:{request.remote_addr or 'unknown'}"):
+        return jsonify(error="too many requests"), 429
     body = request.get_json(silent=True) or {}
     nickname = (body.get("nickname") or "").strip()[:32] or "Listener"
     text = (body.get("body") or "").strip()

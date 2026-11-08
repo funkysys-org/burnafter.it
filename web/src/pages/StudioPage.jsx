@@ -117,10 +117,16 @@ export default function StudioPage() {
           {phase === "live" && (
             <button className="bevel primary" onClick={endLive}>■ END THE SESSION</button>
           )}
+          {phase === "live" && (
+            <p className="dim small" style={{ marginTop: 10 }}>
+              auto-end 30s after you stop pushing — keep this tab open while live
+            </p>
+          )}
           {phase === "ended" && (
             <>
               <p className="dim" style={{ marginBottom: 10 }}>
                 save the buffered audio as a normal shout, or let it burn forever?
+                (minor glitches possible near chunk boundaries)
               </p>
               <button className="bevel primary" onClick={save}>💾 SAVE AS SHOUT</button>{" "}
               <Link to="/" className="bevel">LET IT BURN ►</Link>

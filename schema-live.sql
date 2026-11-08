@@ -2,9 +2,11 @@
 CREATE TABLE IF NOT EXISTS live_sessions (
     id               BIGSERIAL PRIMARY KEY,
     hash             TEXT NOT NULL UNIQUE CHECK (length(hash) BETWEEN 20 AND 64),
-    source_token     TEXT NOT NULL,          -- stored hashed? No: per-session
-                                                -- random token; constant-time
-                                                -- compared; dies with session
+    source_token     TEXT NOT NULL,          -- SHA-256 hex of the source
+                                                -- token; raw token never
+                                                -- stored; constant-time
+                                                -- compare against the hash;
+                                                -- dies with session
     listener_cap     INTEGER,                -- NULL = unlimited (locked #2)
     created_at       TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
     expires_at       TIMESTAMP NOT NULL,     -- ≤ 24h from creation (locked #1)
