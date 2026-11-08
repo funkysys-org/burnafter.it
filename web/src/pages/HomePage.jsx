@@ -9,8 +9,23 @@ export function Masthead() {
   return (
     <header style={{ display: "flex", justifyContent: "space-between",
                      alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-      <div className="big" style={{ fontSize: "clamp(20px,5vw,30px)" }}>
-        burnafter·it
+      <div style={{ display: "flex", gap: 8, alignItems: "center",
+                    flexWrap: "wrap" }}>
+        <Link to="/" className="big"
+              style={{ fontSize: "clamp(20px,5vw,30px)",
+                       textDecoration: "none", color: "inherit" }}>
+          burnafter·it
+        </Link>
+        <nav style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+          <Link to="/create" className="bevel"
+                style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
+            ► SHOUT
+          </Link>
+          <Link to="/studio" className="bevel"
+                style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
+            ● GO LIVE
+          </Link>
+        </nav>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center",
                     flexWrap: "wrap" }}>

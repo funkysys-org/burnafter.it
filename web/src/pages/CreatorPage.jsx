@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import qrcode from "qrcode-generator";
-import { reduced } from "./HomePage";
+import { reduced, Masthead } from "./HomePage";
 
 const TYPES = [
   { id: "text", label: "TEXT", limit: "≤ 10 KB" },
@@ -177,6 +177,7 @@ export default function CreatorPage() {
 
   return (
     <main>
+      <Masthead />
       <section>
         <div className="sec-label">NEW SHOUT</div>
         <h1 style={{ fontSize: "clamp(24px,6vw,40px)" }}>STUDIO · CREATE</h1>
