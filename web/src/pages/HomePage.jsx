@@ -48,6 +48,9 @@ export default function HomePage() {
         </p>
         <Link to="/create" className="bevel primary" style={{ fontSize: 16 }}>
           ► SHARE EPHEMERAL CONTENT
+        </Link>{" "}
+        <Link to="/studio" className="bevel" style={{ fontSize: 16 }}>
+          ● GO LIVE
         </Link>
       </section>
 

@@ -77,6 +77,10 @@ def api(db):
             "TESTING": True,
             "SECRET_KEY": "test-key-0123456789abcdef0123456789abcdef",
             "DATABASE_URL": db.info.dsn,
+            # Suite isolation: NEVER inherit ambient REDIS_URL from the
+            # environment — the shared `api` fixture must stay in-process
+            # (fresh bucket per app). Redis-backed tests set it explicitly.
+            "REDIS_URL": None,
         }
     )
     with flask_app.test_client() as client:
@@ -115,3 +119,54 @@ def make_shout(db):
         return h
 
     return _make
+
+
+# ── live-session fixtures (Radio Puppa Live) — shared across test files ──────
+
+@pytest.fixture(scope="module")
+def live_db():
+    """Apply schema-live.sql to the (already-schema'd) test DB."""
+    import os
+
+    import psycopg
+
+    from tests.conftest import ADMIN_DSN, TEST_DSN
+
+    with psycopg.connect(ADMIN_DSN, autocommit=True) as conn:
+        conn.execute("SELECT 1")  # ensure reachable
+    with psycopg.connect(TEST_DSN, autocommit=True) as conn:
+        with open(
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "schema-live.sql",
+            )
+        ) as fh:
+            conn.execute(fh.read())
+    with psycopg.connect(TEST_DSN) as conn:
+        yield conn
+
+
+@pytest.fixture()
+def live_api(live_db):
+    from app import create_app
+
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test-key-0123456789abcdef0123456789abcdef",
+            "DATABASE_URL": live_db.info.dsn,
+        }
+    )
+    app.config["REDIS_URL"] = "redis://localhost:6379/15"
+    with app.test_client() as c:
+        yield c
+
+
+@pytest.fixture()
+def session(live_api):
+    r = live_api.post("/live", json={"maxhours": 24, "cap": None})
+    body = r.get_json()
+    return {
+        "h": body["listener_url"].rsplit("/", 1)[1],
+        "token": body["token"],
+    }

@@ -306,6 +306,12 @@ def create_app(config_overrides=None):
     if config_overrides:
         app.config.update(config_overrides)
 
+    # Deferred import: live.py imports now_utc from this module —
+    # importing it at module top would create a cycle.
+    from live import live as live_blueprint
+
+    app.register_blueprint(live_blueprint)
+
     if not app.config["DATABASE_URL"]:
         raise RuntimeError(
             "DATABASE_URL is required (Postgres holds all state in v2-mono)"
