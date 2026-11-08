@@ -606,8 +606,11 @@ def _cli_cleanup() -> int:
     with psycopg.connect(dsn) as conn:
         if redis_url:
             os.environ.setdefault("REDIS_URL", redis_url)
-        reaped_live = reap_dead_live(conn)
-    print(f"reaped: {reaped_live} live session(s) — heartbeat death")
+        ended_live, deleted_live = reap_dead_live(conn)
+    print(
+        f"reaped: {ended_live} live session(s) — heartbeat death; "
+        f"{deleted_live} expired session(s) deleted"
+    )
     return 0
 
 

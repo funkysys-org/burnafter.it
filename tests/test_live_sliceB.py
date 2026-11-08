@@ -107,13 +107,14 @@ def test_heartbeat_death_ends_session(live_api, live_db, session):
     from live import reap_dead_live
 
     # heartbeat alive -> not reaped
-    assert reap_dead_live(live_db) == 0
+    ended, deleted = reap_dead_live(live_db)
+    assert ended == 0
 
     # TTL lapse — NO manual delete: shorten and let it EXPIRE
     r.expire(f"live-hb:{h}", 1)
     time.sleep(1.2)
-    reaped = reap_dead_live(live_db)
-    assert reaped >= 1
+    ended, deleted = reap_dead_live(live_db)
+    assert ended >= 1
     m = live_api.get(f"/live/{h}/meta")
     assert m.status_code == 404  # uniform burned
 

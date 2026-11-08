@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { reduced, Masthead } from "./HomePage";
+import LiveChat from "../LiveChat";
 import { LivePlayer } from "../live";
 
 function fmtFuse(iso) {
@@ -17,13 +18,10 @@ export default function LivePage() {
   const phaseRef = useRef("gate");            // always-fresh phase for
   useEffect(() => { phaseRef.current = phase; }, [phase]); // closures/timers
   const [meta, setMeta] = useState(null);
-  const [fuse, setFuse] = useState("");
   const [nick] = useState(() => "Listener-" + String(Math.floor(1000 + Math.random() * 9000)));
-  const [msgs, setMsgs] = useState([]);
-  const [draft, setDraft] = useState("");
+  const [fuse, setFuse] = useState("");
   const audioRef = useRef(null);
   const playerRef = useRef(null);
-  const lastIdRef = useRef(0);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -70,19 +68,6 @@ export default function LivePage() {
         } catch {}
       }, 2500);
     }, 100);
-  }
-
-  async function say(e) {
-    e.preventDefault();
-    if (!draft.trim()) return;
-    const body = draft.trim();
-    setDraft("");
-    const r = await fetch(`/live/${hash}/say`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nickname: nick, body }),
-    });
-    if (r.status === 404) setPhase("burned");
   }
 
   if (phase === "burned") {
@@ -163,27 +148,7 @@ export default function LivePage() {
           live edge is a few seconds behind — that's the radio way
         </p>
       </section>
-      <section className="panel">
-        <div className="sec-label">CHAT · {nick}</div>
-        <div style={{ maxHeight: 240, overflowY: "auto", margin: "10px 0" }}>
-          {msgs.map((m) => (
-            <p key={m.id} style={{ overflowWrap: "anywhere" }}>
-              <b>{m.nickname}</b> <span className="dim small">· {m.said_at.slice(11, 19)}Z</span><br />
-              {m.body}
-            </p>
-          ))}
-          {msgs.length === 0 && <p className="dim small">no messages yet — say hi…</p>}
-        </div>
-        <form onSubmit={say} style={{ display: "flex", gap: 8 }}>
-          <input type="text" value={draft} maxLength={500}
-                 onChange={(e) => setDraft(e.target.value)}
-                 placeholder="say it to the room (≤ 500 chars)" />
-          <button className="bevel" type="submit" disabled={!draft.trim()}>SAY</button>
-        </form>
-        <p className="dim small" style={{ marginTop: 6 }}>
-          anonymous · nicknames cap at 32 chars · messages die with the session
-        </p>
-      </section>
+      <LiveChat hash={hash} nick={nick} active={phase === "onair"} />
     </main>
   );
 }

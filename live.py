@@ -444,29 +444,42 @@ def live_chat(h):
     return jsonify(messages=msgs)
 
 
-def reap_dead_live(conn) -> int:
-    """Heartbeat-death sweep: sessions ON (not manually ended) whose
-    Redis heartbeat expired get ended_at set. Called by the reaper
-    cycle. Returns number of sessions reaped."""
+def reap_dead_live(conn) -> tuple:
+    """Sweep for the CLI cycle: (1) heartbeat-death — sessions ON whose
+    Redis hb expired get ended_at set; (2) STORAGE HONESTY — expired
+    rows are DELETED so 'messages die with the session' is true of
+    storage, not just access (messages cascade). Returns
+    (heartbeat_ended, expired_deleted). Tolerates a missing
+    live_sessions table (shout-only deployments)."""
     r = _r()
-    if r is None:
-        return 0
-    with conn.cursor() as cur:
-        cur.execute(
-            """SELECT id, hash FROM live_sessions
-                WHERE ended_at IS NULL AND expires_at > %s""",
-            (now_utc(),),
-        )
-        rows = cur.fetchall()
-    reaped = 0
-    for sid, h in rows:
-        if not r.exists(f"live-hb:{h}"):
-            with conn.cursor() as cur:
-                cur.execute(
-                    "UPDATE live_sessions SET ended_at = %s WHERE id = %s",
-                    (now_utc(), sid),
-                )
-            r.delete(f"live:{h}", f"live-n:{h}")
-            reaped += 1
-    conn.commit()
-    return reaped
+    ended = 0
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, hash FROM live_sessions
+                    WHERE ended_at IS NULL AND expires_at > %s""",
+                (now_utc(),),
+            )
+            rows = cur.fetchall()
+        if r is not None:
+            for sid, h in rows:
+                if not r.exists(f"live-hb:{h}"):
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE live_sessions SET ended_at = %s WHERE id = %s",
+                            (now_utc(), sid),
+                        )
+                    r.delete(f"live:{h}", f"live-n:{h}")
+                    ended += 1
+        # expired rows (any end reason): delete outright — chat cascades
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM live_sessions WHERE expires_at <= %s",
+                (now_utc(),),
+            )
+            deleted = cur.rowcount
+        conn.commit()
+        return (ended, deleted)
+    except psycopg.errors.UndefinedTable:
+        conn.rollback()
+        return (0, 0)

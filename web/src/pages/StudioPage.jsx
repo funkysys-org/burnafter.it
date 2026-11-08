@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Masthead } from "./HomePage";
 import { ThemeSwitch } from "../theme";
+import LiveChat from "../LiveChat";
 import {
   LiveSource,
   createLiveSession,
@@ -94,6 +95,10 @@ export default function StudioPage() {
             </>
           )}
         </section>
+
+        {phase === "live" && (
+          <LiveChat hash={sessRef.current.session_hash} nick="HOST" active={phase === "live"} />
+        )}
 
         {phase !== "saved" && (
           <section className="panel" style={{ textAlign: "center" }}>
