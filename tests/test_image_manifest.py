@@ -97,6 +97,7 @@ def test_no_spa_page_route_is_swallowed_by_the_api_proxy():
         "/studio",
         "/read/text/habc123def456",
         "/live/L79263f881e087c2d41943a585f3ee343",
+        "/chat",
         "/chat/C79263f881e087c2d41943a585f3ee343",
     ]
     # API URLs that MUST reach the proxy — the reverse check (a page

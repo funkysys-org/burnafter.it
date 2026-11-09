@@ -25,6 +25,10 @@ export function Masthead() {
                 style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
             ● GO LIVE
           </Link>
+          <Link to="/chat" className="bevel"
+                style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
+            💬 CHAT
+          </Link>
         </nav>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center",
@@ -126,22 +130,9 @@ export default function HomePage() {
         <Link to="/studio" className="bevel" style={{ fontSize: 16 }}>
           ● GO LIVE
         </Link>{" "}
-        <button className="bevel" style={{ fontSize: 16 }} onClick={makeRoom}>
+        <Link to="/chat" className="bevel" style={{ fontSize: 16 }}>
           💬 CHAT ROOM
-        </button>
-        {roomUrl && (
-          <div className="panel" style={{ marginTop: 18, textAlign: "center" }}>
-            <div className="sec-label">ROOM LINK — SHARE IT</div>
-            <div className="lcd" style={{ display: "inline-block", maxWidth: "100%",
-                     overflowWrap: "anywhere", textAlign: "left", margin: "10px 0" }}>
-              {roomUrl}
-            </div>
-            <p className="dim small">
-              anonymous room · burns in 4h · everyone with the link is in
-            </p>
-          </div>
-        )}
-        {roomErr && <p style={{ color: "var(--red)", marginTop: 10 }}>⚠ {roomErr}</p>}
+        </Link>
       </section>
 
       <StatsStrip />
