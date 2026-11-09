@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Masthead } from "./HomePage";
 import { ThemeSwitch } from "../theme";
@@ -8,6 +8,7 @@ import {
   createLiveSession,
   endLiveSession,
   saveAsShout,
+  listInputDevices,
 } from "../live";
 
 export default function StudioPage() {
@@ -21,15 +22,46 @@ export default function StudioPage() {
   const srcRef = useRef(null);
   const sessRef = useRef(null);
   const [copied, setCopied] = useState(false);
+  // Tier A: input device + tape type (persisted; labels need a granted
+  // mic once — the browser rule, noted in the UI not hidden)
+  const [devices, setDevices] = useState([]);
+  const [deviceId, setDeviceId] = useState(() => {
+    try { return localStorage.getItem("bai-input") || ""; } catch { return ""; }
+  });
+  const [music, setMusic] = useState(() => {
+    try { return localStorage.getItem("bai-music") === "1"; } catch { return false; }
+  });
+  const [deviceGone, setDeviceGone] = useState(false);
+
+  useEffect(() => {
+    listInputDevices().then(setDevices).catch(() => {});
+    if (navigator.mediaDevices?.addEventListener) {
+      const refresh = () => listInputDevices().then(setDevices).catch(() => {});
+      navigator.mediaDevices.addEventListener("devicechange", refresh);
+      return () => navigator.mediaDevices.removeEventListener("devicechange", refresh);
+    }
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem("bai-input", deviceId); } catch {}
+  }, [deviceId]);
+  useEffect(() => {
+    try { localStorage.setItem("bai-music", music ? "1" : "0"); } catch {}
+  }, [music]);
 
   async function goLive() {
     setErr("");
+    setDeviceGone(false);
     try {
       const s = await createLiveSession(hours, cap === "" ? null : parseInt(cap, 10));
       sessRef.current = s;
-      const source = new LiveSource(s.session_hash, s.token);
+      const source = new LiveSource(s.session_hash, s.token, {
+        deviceId: deviceId || null,
+        music,
+      });
       srcRef.current = source;
       await source.start(setSeq);
+      if (source.deviceGone) setDeviceGone(true);
       setListenerUrl(location.origin + s.listener_url);
       setPhase("live");
     } catch (e) {
@@ -79,6 +111,12 @@ export default function StudioPage() {
               <p className="lcd" style={{ display: "inline-block" }}>
                 CHUNKS SENT: <span className="counter">{seq}</span>
               </p>
+              {deviceGone && (
+                <p className="dim small" style={{ color: "var(--red)" }}>
+                  ⚠ chosen input device was unavailable — fell back to the
+                  default microphone. Re-pick before the next session.
+                </p>
+              )}
             </>
           )}
           {phase === "ended" && (
@@ -150,6 +188,47 @@ export default function StudioPage() {
         <div className="sec-label">NEW LIVE SESSION</div>
         <h1 style={{ fontSize: "clamp(24px,6vw,40px)" }}>GO LIVE · RADIO PUPPA</h1>
         <p className="dim">anonymous live audio from your browser — listeners join with a link</p>
+      </section>
+
+      <section className="panel" style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
+        <div>
+          <div className="sec-label">INPUT DEVICE</div>
+          <select value={deviceId}
+                  onChange={(e) => setDeviceId(e.target.value)}
+                  style={{ marginTop: 6, minWidth: 220, fontSize: 12,
+                           padding: "8px 6px",
+                           background: "var(--lcd-bg)", color: "var(--lcd-ink)",
+                           border: "2px solid var(--border)",
+                           borderRadius: "var(--r-ctl)" }}>
+            <option value="">» default microphone</option>
+            {devices.map((d) => (
+              <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+            ))}
+          </select>
+          <p className="dim small" style={{ marginTop: 6 }}>
+            usb mixers, interfaces and virtual cables appear here
+            (labels show after the first mic grant — browser rule)
+          </p>
+        </div>
+        <div>
+          <div className="sec-label">TAPE TYPE</div>
+          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            <button className="bevel" aria-pressed={!music}
+                    style={{ minHeight: 44, padding: "8px 12px", fontSize: 11,
+                             background: !music ? "var(--green)" : undefined,
+                             color: !music ? "var(--panel)" : undefined }}
+                    onClick={() => setMusic(false)}>🎙 VOICE</button>
+            <button className="bevel" aria-pressed={music}
+                    style={{ minHeight: 44, padding: "8px 12px", fontSize: 11,
+                             background: music ? "var(--green)" : undefined,
+                             color: music ? "var(--panel)" : undefined }}
+                    onClick={() => setMusic(true)}>🎵 MUSIC</button>
+          </div>
+          <p className="dim small" style={{ marginTop: 6 }}>
+            voice: processing on, 32kbps · music: raw input, 128kbps
+            (the voice DSP mangles music)
+          </p>
+        </div>
       </section>
 
       <section className="panel" style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>

@@ -4,6 +4,22 @@ import { reduced } from "./pages/HomePage";
 
 export const CHUNK_MS = 3000;
 
+// Tier A (70-external-ingest-design.md): input-device picker +
+// voice/music tape type. Voice = today's behavior (processing ON,
+// 32kbps). Music = processing OFF, 128kbps (the browser's voice-grade
+// DSP mangles music). 128kbps ~ 48KB per 3s chunk — under the 64KB
+// SEG_CAP ceiling.
+export const MUSIC_BITRATE = 128000;
+export const VOICE_BITRATE = 32000;
+
+export async function listInputDevices() {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  const all = await navigator.mediaDevices.enumerateDevices();
+  return all
+    .filter((d) => d.kind === "audioinput")
+    .map((d) => ({ deviceId: d.deviceId, label: d.label || "input device" }));
+}
+
 export async function createLiveSession(maxhours, cap) {
   const r = await fetch("/live", {
     method: "POST",
@@ -31,22 +47,45 @@ export async function saveAsShout(h, token, maxhits, maxtime) {
 }
 
 export class LiveSource {
-  constructor(hash, token) {
+  // Tier A: deviceId + music mode. deviceId = null -> OS default.
+  // music = false -> voice tape (processing ON, 32kbps).
+  constructor(hash, token, { deviceId = null, music = false } = {}) {
     this.hash = hash;
     this.token = token;
+    this.deviceId = deviceId;
+    this.music = music;
     this.recorder = null;
     this.stream = null;
     this.seq = 0;
+    this.deviceGone = false;  // stale-device fallback (hot-unplug)
   }
 
   async start(onSeq) {
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const constraints = { audio: this.music
+      ? { deviceId: this.deviceId ? { exact: this.deviceId } : undefined,
+          echoCancellation: false, autoGainControl: false, noiseSuppression: false }
+      : { deviceId: this.deviceId ? { exact: this.deviceId } : undefined } };
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (e) {
+      if (this.deviceId && (e.name === "OverconstrainedError" ||
+                            e.name === "NotFoundError")) {
+        // chosen device vanished (unplugged/permission changed) — fall
+        // back to the default input, honestly flagged to the UI
+        this.deviceGone = true;
+        this.deviceId = null;
+        delete constraints.audio.deviceId;
+        this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } else {
+        throw e;
+      }
+    }
     const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
       ? "audio/webm;codecs=opus"
       : "audio/webm";
     this.recorder = new MediaRecorder(this.stream, {
       mimeType: mime,
-      audioBitsPerSecond: 32000,
+      audioBitsPerSecond: this.music ? MUSIC_BITRATE : VOICE_BITRATE,
     });
     this.recorder.ondataavailable = async (e) => {
       if (!e.data || e.data.size === 0) return;
