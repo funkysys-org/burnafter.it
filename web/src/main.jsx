@@ -15,6 +15,7 @@ import CreatorPage from "./pages/CreatorPage";
 import ReaderPage from "./pages/ReaderPage";
 import StudioPage from "./pages/StudioPage";
 import LivePage from "./pages/LivePage";
+import ChatRoomPage from "./pages/ChatRoomPage";
 
 // NOTE: the SPA deliberately has NO /stream_any route. Browser
 // NAVIGATION to /stream_any/<type>/<hash> must reach the raw gated
@@ -29,6 +30,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <Route path="/create" element={<CreatorPage />} />
           <Route path="/read/:type/:hash" element={<ReaderPage />} />
           <Route path="/live/:hash" element={<LivePage />} />
+          <Route path="/chat/:hash" element={<ChatRoomPage />} />
           <Route path="/studio" element={<StudioPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

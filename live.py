@@ -75,7 +75,8 @@ def _get_live_session(cur, h):
     cur.execute(
         """SELECT id, source_token, listener_cap, expires_at
              FROM live_sessions
-            WHERE hash = %s AND ended_at IS NULL AND expires_at > %s""",
+            WHERE hash = %s AND kind = 'live'
+              AND ended_at IS NULL AND expires_at > %s""",
         (h, now_utc()),
     )
     return cur.fetchone()
@@ -99,6 +100,42 @@ def _get_session_for_save(cur, h):
     return cur.fetchone()
 
 
+def _ensure_live_schema(conn):
+    """Boot-time migration: existing Postgres volumes created before the
+    `kind` column (ESC chat rooms) don't get initdb re-runs — ALTER on
+    boot keeps them current. Idempotent; tolerates fresh DBs where
+    create_app runs before any live table exists (live tables are
+    created by initdb/schema-live.sql on first boot)."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='live_sessions' AND column_name='kind'"
+            )
+            if cur.fetchone() is None:
+                cur.execute(
+                    "ALTER TABLE live_sessions ADD COLUMN kind TEXT "
+                    "NOT NULL DEFAULT 'live' "
+                    "CHECK (kind IN ('live', 'chat'))"
+                )
+        conn.commit()
+    except Exception:  # noqa: BLE001 — live tables may not exist yet
+        conn.rollback()
+
+
+def _ensure_chat_indexes(conn):
+    """Index for the ESC room lookup by kind+hash. Same boot-time rules."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_live_kind "
+                "ON live_sessions (kind, hash)"
+            )
+        conn.commit()
+    except Exception:  # noqa: BLE001
+        conn.rollback()
+
+
 @live.post("/live")
 def create_session():
     # gate major #1a: anonymous create is THE entry — rate-limit it
@@ -106,6 +143,11 @@ def create_session():
     if rl is not None and not rl.allow(request.remote_addr or "unknown"):
         return jsonify(error="too many requests"), 429
     body = request.get_json(silent=True) or {}
+    # ESC: a chat ROOM is a session of kind='chat' (no audio, no source
+    # token — the room link is the only credential, as in the original)
+    kind = body.get("kind", "live")
+    if kind not in ("live", "chat"):
+        return jsonify(error="kind must be live or chat"), 400
     try:
         hours = float(body.get("maxhours", MAX_HOURS))
     except (TypeError, ValueError):
@@ -121,7 +163,7 @@ def create_session():
         if not 0 < cap <= 10000:
             return jsonify(error="cap must be within 1..10000"), 400
 
-    h = "L" + secrets.token_hex(16)
+    h = "L" + secrets.token_hex(16) if kind == "live" else "C" + secrets.token_hex(16)
     token = secrets.token_hex(32)
     # gate minor #4: store the HASH, never the raw token (constant-time
     # compare below works identically against the hash)
@@ -129,26 +171,40 @@ def create_session():
     expires_at = now_utc() + datetime.timedelta(hours=hours)
 
     with _connect() as conn:
+        _ensure_live_schema(conn)
+        _ensure_chat_indexes(conn)
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO live_sessions
-                       (hash, source_token, listener_cap, expires_at)
-                   VALUES (%s, %s, %s, %s) RETURNING id""",
-                (h, token_hash, cap, expires_at),
+                       (hash, kind, source_token, listener_cap, expires_at)
+                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                (h, kind, token_hash, cap, expires_at),
             )
             (sid,) = cur.fetchone()
 
     r = _r()
-    if r is not None:
+    if r is not None and kind == "live":
         # gate major #2: hb dies HEARTBEAT_S after the last push —
         # create gets the bounded mic-permission grace, pushes renew 30s
         r.set(f"live-hb:{h}", "1", ex=CREATE_GRACE_S)
+
+    if kind == "chat":
+        # ESC room: the link is the ONLY credential (no source token
+        # needed — no audio to push); returned for URL symmetry but
+        # never required by any chat route
+        return jsonify(
+            listener_url=f"/chat/{h}",
+            session_hash=h,
+            token=None,
+            kind="chat",
+        )
 
     return jsonify(
         listener_url=f"/live/{h}",   # SPA live page (gate: ON AIR)
         source_url=f"/live/{h}/seg?token={token}",
         session_hash=h,
         token=token,
+        kind="live",
     )
 
 
@@ -175,7 +231,20 @@ def live_meta(h):
         with conn.cursor() as cur:
             row = _get_live_session(cur, h)
             if row is None:
-                return _burned()
+                # ESC room? meta works for rooms too (no listeners count
+                # without seats — but cap/fuse matter for the gate page)
+                room = _get_room_session(cur, h)
+                if room is None:
+                    return _burned()
+                cur.execute(
+                    "SELECT listener_cap, expires_at FROM live_sessions WHERE id = %s",
+                    (room[0],),
+                )
+                cap, expires_at = cur.fetchone()
+                return jsonify(
+                    on_air=True, kind="chat", listeners=None, cap=cap,
+                    expires_at=expires_at.isoformat() + "Z",
+                )
             sid, _tok, cap, expires_at = row
     n = 0
     r = _r()
@@ -386,6 +455,36 @@ def live_save(h):
     return jsonify(url=f"/read/audio/{shout_hash}")
 
 
+@live.get("/live/stats")
+def live_stats():
+    """Tiny aggregate for the home page: REAL counts only — active live
+    sessions and open chat rooms. No per-item data, no hashes leaked."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT
+                       count(*) FILTER (WHERE kind = 'live' AND ended_at IS NULL AND expires_at > %s),
+                       count(*) FILTER (WHERE kind = 'chat' AND ended_at IS NULL AND expires_at > %s)
+                     FROM live_sessions""",
+                (now_utc(), now_utc()),
+            )
+            live_now, chat_now = cur.fetchone()
+    return jsonify(live_now=live_now, chat_now=chat_now)
+
+
+def _get_room_session(cur, h):
+    """ESC room lookup: kind='chat', active, unexpired. Rooms have no
+    source token — the link is the credential (as in the original
+    project). Same uniform-burned contract as everything else."""
+    cur.execute(
+        """SELECT id FROM live_sessions
+            WHERE hash = %s AND kind = 'chat'
+              AND ended_at IS NULL AND expires_at > %s""",
+        (h, now_utc()),
+    )
+    return cur.fetchone()
+
+
 @live.post("/live/<h>/say")
 def live_say(h):
     # gate minor #7: anonymous chat throttled per SESSION+IP (a separate
@@ -400,7 +499,9 @@ def live_say(h):
         return jsonify(error="body must be 1..500 characters"), 400
     with _connect() as conn:
         with conn.cursor() as cur:
-            row = _get_live_session(cur, h)
+            # ESC: rooms (kind='chat') have no source token — the link
+            # is the credential; live sessions use the standard lookup
+            row = _get_room_session(cur, h) or _get_live_session(cur, h)
             if row is None:
                 return _burned()
             sid = row[0]
@@ -421,7 +522,8 @@ def live_chat(h):
         return jsonify(error="after must be an integer"), 400
     with _connect() as conn:
         with conn.cursor() as cur:
-            row = _get_live_session(cur, h)
+            # ESC: rooms and live sessions share the same tail route
+            row = _get_room_session(cur, h) or _get_live_session(cur, h)
             if row is None:
                 return _burned()
             sid = row[0]

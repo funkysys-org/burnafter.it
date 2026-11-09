@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ThemeSwitch } from "../theme";
 
@@ -49,7 +49,66 @@ function Step({ n, title, children }) {
   );
 }
 
+function StatBox({ value, label, note }) {
+  return (
+    <div className="panel" style={{ flex: "1 1 150px", textAlign: "center",
+                                    padding: "14px 10px" }}>
+      <div className="lcd" style={{ display: "inline-block" }}>
+        <span className="counter">{value}</span>
+      </div>
+      <div className="sec-label" style={{ marginTop: 8 }}>{label}</div>
+      {note && <div className="dim" style={{ fontSize: 10 }}>{note}</div>}
+    </div>
+  );
+}
+
+function StatsStrip() {
+  const [liveNow, setLiveNow] = useState(null);
+  const [chatNow, setChatNow] = useState(null);
+  useEffect(() => {
+    fetch("/live/stats")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => { setLiveNow(j.live_now); setChatNow(j.chat_now); })
+      .catch(() => {});
+  }, []);
+  return (
+    <section>
+      <div className="sec-label">ON THE WIRE</div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
+        <StatBox value={liveNow ?? "—"} label="ON AIR NOW" note="real, live" />
+        <StatBox value={chatNow ?? "—"} label="CHAT ROOMS OPEN" note="real, live" />
+        <StatBox value="∞" label="SHOUTS BURNED" note="unknowable by design" />
+        <StatBox value="0" label="MESSAGES STORED FOREVER" note="we keep nothing" />
+      </div>
+      <p className="dim small" style={{ marginTop: 8 }}>
+        two of these are live counters; two are the honest truth —
+        we can't count burned shouts BECAUSE they're gone, and we store
+        nothing forever because nothing exists to store. capito?
+      </p>
+    </section>
+  );
+}
+
 export default function HomePage() {
+  const [roomUrl, setRoomUrl] = useState("");
+  const [roomErr, setRoomErr] = useState("");
+
+  async function makeRoom() {
+    setRoomErr("");
+    try {
+      const r = await fetch("/live", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "chat", maxhours: 4, cap: null }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "room failed");
+      const j = await r.json();
+      setRoomUrl(location.origin + j.listener_url);
+    } catch (e) {
+      setRoomErr(e.message);
+    }
+  }
+
   return (
     <main>
       <Masthead />
@@ -66,8 +125,26 @@ export default function HomePage() {
         </Link>{" "}
         <Link to="/studio" className="bevel" style={{ fontSize: 16 }}>
           ● GO LIVE
-        </Link>
+        </Link>{" "}
+        <button className="bevel" style={{ fontSize: 16 }} onClick={makeRoom}>
+          💬 CHAT ROOM
+        </button>
+        {roomUrl && (
+          <div className="panel" style={{ marginTop: 18, textAlign: "center" }}>
+            <div className="sec-label">ROOM LINK — SHARE IT</div>
+            <div className="lcd" style={{ display: "inline-block", maxWidth: "100%",
+                     overflowWrap: "anywhere", textAlign: "left", margin: "10px 0" }}>
+              {roomUrl}
+            </div>
+            <p className="dim small">
+              anonymous room · burns in 4h · everyone with the link is in
+            </p>
+          </div>
+        )}
+        {roomErr && <p style={{ color: "var(--red)", marginTop: 10 }}>⚠ {roomErr}</p>}
       </section>
+
+      <StatsStrip />
 
       <section>
         <div className="sec-label">HOW IT WORKS</div>
