@@ -99,7 +99,20 @@ def test_no_spa_page_route_is_swallowed_by_the_api_proxy():
         "/live/L79263f881e087c2d41943a585f3ee343",
         "/chat/C79263f881e087c2d41943a585f3ee343",
     ]
+    # API URLs that MUST reach the proxy — the reverse check (a page
+    # regex swallowing /live/stats was live-reported: stats showed "—")
+    api_urls = [
+        "/live/stats",
+        "/health",
+        "/post/text",
+        "/stream_any/text/habc123def456",
+        "/meta/text/habc123def456",
+        "/live/L79263f881e087c2d41943a585f3ee343/meta",
+        "/live/L79263f881e087c2d41943a585f3ee343/seg",
+        "/live/C79263f881e087c2d41943a585f3ee343/say",
+    ]
     problems = []
+    missing = []
     for url in spa_urls:
         winner = None
         for loc in locations:  # file order = nginx evaluation order
@@ -126,6 +139,40 @@ def test_no_spa_page_route_is_swallowed_by_the_api_proxy():
         f"SPA page URL(s) routed to the API proxy (Flask 404s): {problems} — "
         "each needs a dedicated location BEFORE the API regex, or the API "
         "regex must not match it (nginx: first regex match in file order wins)"
+    )
+
+    # The REVERSE check: every API URL must reach the proxy. nginx
+    # evaluates EXACT matches first, then regexes in file order, then
+    # prefixes — the simulator must model that, or a page regex silently
+    # swallows an API route (live-reported: /live/stats -> "—" dashes).
+    for url in api_urls:
+        winner = None
+        exact = [l for l in locations if l["exact"]]
+        for loc in exact:  # nginx: exact matches beat everything
+            if url == loc["pattern"].lstrip("="):
+                winner = loc
+                break
+        if winner is None:
+            for loc in locations:  # file order
+                if loc["exact"]:
+                    continue
+                if loc["regex"]:
+                    try:
+                        if re.search(loc["pattern"], url):
+                            winner = loc
+                            break
+                    except re.error:
+                        pass
+                else:  # prefix
+                    if url.startswith(loc["pattern"]):
+                        winner = loc
+                        break
+        if winner is None or not winner["proxy"]:
+            missing.append(url)
+    assert not missing, (
+        f"API URL(s) NOT routed to the proxy: {missing} — a page location "
+        "or regex is swallowing them (exact-match locations fix collisions; "
+        "see the /live/stats incident)"
     )
 
 
