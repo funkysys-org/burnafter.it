@@ -176,7 +176,7 @@ export default function HomePage() {
       <footer className="dim small" style={{ padding: "20px 0",
                  borderTop: "2px solid var(--ink)" }}>
         burnafter.it — revived 2026 · a 2006 hobby radio app that grew
-        up · puppa-powered · <Link to="/privacy">privacy</Link> · <Link to="/privacy">privacy</Link>
+        up · puppa-powered · <Link to="/privacy">privacy</Link>
       </footer>
     </main>
   );
