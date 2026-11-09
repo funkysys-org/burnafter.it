@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import qrcode from "qrcode-generator";
 import { Masthead } from "./HomePage";
 
 export default function ChatPage() {
@@ -7,6 +8,14 @@ export default function ChatPage() {
   const [roomErr, setRoomErr] = useState("");
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const qrSrc = useMemo(() => {
+    if (!roomUrl) return "";
+    const qr = qrcode(0, "M");
+    qr.addData(roomUrl);
+    qr.make();
+    return qr.createDataURL(4, 4);
+  }, [roomUrl]);
 
   async function makeRoom() {
     setRoomErr("");
@@ -61,6 +70,13 @@ export default function ChatPage() {
               </button>{" "}
               <a className="bevel" href={roomUrl}>► ENTER THE ROOM</a>
             </div>
+            {qrSrc && (
+              <div style={{ margin: "14px 0" }}>
+                <img src={qrSrc} alt="QR code of the room link"
+                     width={220} height={220} />
+                <p className="dim small">scan it, share it, wave it goodbye</p>
+              </div>
+            )}
             <p className="dim small" style={{ marginTop: 8 }}>
               burns in 4h · no accounts · nothing recorded · messages die with the room
             </p>

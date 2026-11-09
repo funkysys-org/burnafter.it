@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import qrcode from "qrcode-generator";
 import { Masthead } from "./HomePage";
 import { ThemeSwitch } from "../theme";
 import LiveChat from "../LiveChat";
@@ -32,6 +33,22 @@ export default function StudioPage() {
     try { return localStorage.getItem("bai-music") === "1"; } catch { return false; }
   });
   const [deviceGone, setDeviceGone] = useState(false);
+
+  const listenerQr = useMemo(() => {
+    if (!listenerUrl) return "";
+    const qr = qrcode(0, "M");
+    qr.addData(listenerUrl);
+    qr.make();
+    return qr.createDataURL(4, 4);
+  }, [listenerUrl]);
+
+  const savedQr = useMemo(() => {
+    if (!savedUrl) return "";
+    const qr = qrcode(0, "M");
+    qr.addData(location.origin + savedUrl);
+    qr.make();
+    return qr.createDataURL(4, 4);
+  }, [savedUrl]);
 
   useEffect(() => {
     listInputDevices().then(setDevices).catch(() => {});
@@ -130,6 +147,13 @@ export default function StudioPage() {
                         overflowWrap: "anywhere", margin: "10px 0" }}>
                 {location.origin + savedUrl}
               </div>
+              {savedQr && (
+                <div style={{ margin: "10px 0" }}>
+                  <img src={savedQr} alt="QR code of the saved shout"
+                       width={220} height={220} />
+                  <p className="dim small">the session survived — scan to listen</p>
+                </div>
+              )}
             </>
           )}
         </section>
@@ -150,6 +174,13 @@ export default function StudioPage() {
                 {copied ? "COPIED!" : "COPY THE LINK"}
               </button>
             </div>
+            {listenerQr && (
+              <div style={{ margin: "14px 0" }}>
+                <img src={listenerQr} alt="QR code of the listener link"
+                     width={220} height={220} />
+                <p className="dim small">scan it, share it — the room takes everyone</p>
+              </div>
+            )}
             <p className="dim small" style={{ marginTop: 8 }}>
               anyone with this link joins anonymously — nothing is recorded unless you save
             </p>
