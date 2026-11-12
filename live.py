@@ -571,18 +571,20 @@ def live_save(h):
 @live.get("/live/stats")
 def live_stats():
     """Tiny aggregate for the home page: REAL counts only — active live
-    sessions and open chat rooms. No per-item data, no hashes leaked."""
+    sessions, open chat rooms, live calls. No per-item data, no hashes
+    leaked."""
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT
                        count(*) FILTER (WHERE kind = 'live' AND ended_at IS NULL AND expires_at > %s),
-                       count(*) FILTER (WHERE kind = 'chat' AND ended_at IS NULL AND expires_at > %s)
+                       count(*) FILTER (WHERE kind = 'chat' AND ended_at IS NULL AND expires_at > %s),
+                       count(*) FILTER (WHERE kind = 'call' AND ended_at IS NULL AND expires_at > %s)
                      FROM live_sessions""",
-                (now_utc(), now_utc()),
+                (now_utc(), now_utc(), now_utc()),
             )
-            live_now, chat_now = cur.fetchone()
-    return jsonify(live_now=live_now, chat_now=chat_now)
+            live_now, chat_now, call_now = cur.fetchone()
+    return jsonify(live_now=live_now, chat_now=chat_now, call_now=call_now)
 
 
 def _get_room_session(cur, h):

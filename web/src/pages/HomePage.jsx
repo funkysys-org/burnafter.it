@@ -73,10 +73,15 @@ function StatBox({ value, label, note }) {
 function StatsStrip() {
   const [liveNow, setLiveNow] = useState(null);
   const [chatNow, setChatNow] = useState(null);
+  const [callNow, setCallNow] = useState(null);
   useEffect(() => {
     fetch("/live/stats")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j) => { setLiveNow(j.live_now); setChatNow(j.chat_now); })
+      .then((j) => {
+        setLiveNow(j.live_now);
+        setChatNow(j.chat_now);
+        setCallNow(j.call_now);
+      })
       .catch(() => {});
   }, []);
   return (
@@ -85,11 +90,12 @@ function StatsStrip() {
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 10 }}>
         <StatBox value={liveNow ?? "—"} label="ON AIR NOW" note="real, live" />
         <StatBox value={chatNow ?? "—"} label="CHAT ROOMS OPEN" note="real, live" />
+        <StatBox value={callNow ?? "—"} label="CALLS ON THE TAPE" note="real, live" />
         <StatBox value="∞" label="SHOUTS BURNED" note="unknowable by design" />
         <StatBox value="0" label="MESSAGES STORED FOREVER" note="we keep nothing" />
       </div>
       <p className="dim small" style={{ marginTop: 8 }}>
-        two of these are live counters; two are the honest truth —
+        three of these are live counters; two are the honest truth —
         we can't count burned shouts BECAUSE they're gone, and we store
         nothing forever because nothing exists to store. capito?
       </p>
@@ -136,6 +142,9 @@ export default function HomePage() {
         </Link>{" "}
         <Link to="/chat" className="bevel" style={{ fontSize: 16 }}>
           💬 CHAT ROOM
+        </Link>{" "}
+        <Link to="/call" className="bevel" style={{ fontSize: 16 }}>
+          📞 PHONE CALL
         </Link>
       </section>
 

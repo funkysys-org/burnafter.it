@@ -72,11 +72,13 @@ def test_stats_endpoint_counts_kinds(live_api):
     live_api.post("/live", json={"maxhours": 1, "cap": None})
     _create_room(live_api)
     _create_room(live_api)
+    live_api.post("/live", json={"kind": "call", "maxhours": 2, "cap": None})
     s = live_api.get("/live/stats")
     assert s.status_code == 200
     j = s.get_json()
     assert j["live_now"] >= 1
     assert j["chat_now"] >= 2
+    assert j["call_now"] >= 1
 
 
 def test_expired_room_burns_uniformly(live_api, live_db):
