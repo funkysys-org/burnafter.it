@@ -18,7 +18,6 @@ export default function CallPage() {
   const sessRef = useRef(null);           // { session_hash, token, role }
   const callerSrcRef = useRef(null);
   const calleeSrcRef = useRef(null);
-  const myAudioRef = useRef(null);
   const otherAudioRef = useRef(null);
   const ringingTimerRef = useRef(null);
 
@@ -31,7 +30,9 @@ export default function CallPage() {
   }, [callUrl]);
 
   async function startTalking(role, token, h) {
-    // push MY voice to MY ring; play the OTHER's ring
+    // push MY voice to MY ring; play the OTHER's ring.
+    // NO local playback by design: you never hear yourself (no echo
+    // path at all) — the 'you' strip is a mic indicator, muted.
     const src = new LiveSource(h, token, { music: false }); // VOICE processing
     const source = role === "caller" ? callerSrcRef : calleeSrcRef;
     source.current = src;
@@ -195,8 +196,14 @@ export default function CallPage() {
         <section className="panel" style={{ textAlign: "center" }}>
           <p className="dim small">them ▼</p>
           <audio ref={otherAudioRef} controls autoPlay style={{ width: "100%" }} />
-          <p className="dim small" style={{ margin: "8px 0" }}>you ▼</p>
-          <audio ref={myAudioRef} controls style={{ width: "100%" }} />
+          <p className="dim small" style={{ margin: "8px 0" }}>
+            you ▼ <span className="chip ok" style={{ marginLeft: 6 }}>
+              <span className="lamp blink" /> MIC LIVE · MUTED LOCALLY
+            </span>
+          </p>
+          <div className="lcd" style={{ display: "inline-block", fontSize: 14 }}>
+            YOUR VOICE GOES TO THE TAPE — NOT TO YOUR SPEAKERS
+          </div>
         </section>
         <section style={{ textAlign: "center" }}>
           <button className="bevel primary" onClick={hangUp}>
