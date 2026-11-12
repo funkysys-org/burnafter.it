@@ -18,6 +18,7 @@ import LivePage from "./pages/LivePage";
 import ChatRoomPage from "./pages/ChatRoomPage";
 import ChatPage from "./pages/ChatPage";
 import PrivacyPage from "./pages/PrivacyPage";
+import CallPage from "./pages/CallPage";
 import ConsentBanner from "./ConsentBanner";
 
 // NOTE: the SPA deliberately has NO /stream_any route. Browser
@@ -35,6 +36,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <Route path="/live/:hash" element={<LivePage />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/call" element={<CallPage />} />
+          <Route path="/call/:hash" element={<CallPage />} />
           <Route path="/chat/:hash" element={<ChatRoomPage />} />
           <Route path="/studio" element={<StudioPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

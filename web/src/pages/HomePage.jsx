@@ -29,6 +29,10 @@ export function Masthead() {
                 style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
             💬 CHAT
           </Link>
+          <Link to="/call" className="bevel"
+                style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
+            📞 PHONE
+          </Link>
         </nav>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center",

@@ -98,6 +98,8 @@ def test_no_spa_page_route_is_swallowed_by_the_api_proxy():
         "/privacy",
         "/read/text/habc123def456",
         "/live/L79263f881e087c2d41943a585f3ee343",
+        "/call",
+        "/call/L79263f881e087c2d41943a585f3ee343",
         "/chat",
         "/chat/C79263f881e087c2d41943a585f3ee343",
     ]
@@ -112,6 +114,8 @@ def test_no_spa_page_route_is_swallowed_by_the_api_proxy():
         "/live/L79263f881e087c2d41943a585f3ee343/meta",
         "/live/L79263f881e087c2d41943a585f3ee343/seg",
         "/live/C79263f881e087c2d41943a585f3ee343/say",
+        "/live/L79263f881e087c2d41943a585f3ee343/accept",
+        "/live/L79263f881e087c2d41943a585f3ee343/ringing",
     ]
     problems = []
     missing = []

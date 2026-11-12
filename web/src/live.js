@@ -20,14 +20,14 @@ export async function listInputDevices() {
     .map((d) => ({ deviceId: d.deviceId, label: d.label || "input device" }));
 }
 
-export async function createLiveSession(maxhours, cap) {
+export async function createLiveSession(maxhours, cap, kind = "live") {
   const r = await fetch("/live", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ maxhours, cap }),
+    body: JSON.stringify({ maxhours, cap, kind }),
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "go-live failed");
-  return r.json(); // { listener_url, source_url, session_hash, token }
+  return r.json(); // { listener_url, source_url, session_hash, token, kind }
 }
 
 export async function endLiveSession(h, token) {
@@ -110,11 +110,14 @@ export class LiveSource {
 }
 
 // Listener side: poll segments and keep an MSE buffer fed.
+// ring: "live" (radio default) | "A" | "B" (SEC CALL — poll the OTHER's)
 export class LivePlayer {
-  constructor(hash, audioEl, seat) {
+  constructor(hash, audioEl, seat, ring = "live", pollMs = 2000) {
     this.hash = hash;
     this.el = audioEl;
     this.seat = seat || "";   // renewed by poll participation (seats expire)
+    this.ring = ring;
+    this.pollMs = pollMs;
     this.seq = 0;
     this.mediaSource = null;
     this.sourceBuffer = null;
@@ -138,7 +141,7 @@ export class LivePlayer {
       this.sourceBuffer = this.mediaSource.addSourceBuffer(MIME);
       this.sourceBuffer.addEventListener("updateend", () => this._drain());
     });
-    this.timer = setInterval(() => this._poll(), 2000);
+    this.timer = setInterval(() => this._poll(), this.pollMs);
     await this._poll();
   }
 
@@ -147,6 +150,7 @@ export class LivePlayer {
     try {
       const u = new URL(`/live/${this.hash}/poll`, location.origin);
       u.searchParams.set("after", this.seq);
+      if (this.ring !== "live") u.searchParams.set("ring", this.ring);
       if (this.seat) u.searchParams.set("seat", this.seat);  // seat renewal
       const r = await fetch(u);
       if (r.status === 404) {
