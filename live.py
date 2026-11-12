@@ -82,6 +82,58 @@ def _get_live_session(cur, h):
     return cur.fetchone()
 
 
+def _get_call_session(cur, h):
+    """Call lookup: kind='call', active, unexpired."""
+    cur.execute(
+        """SELECT id, source_token, callee_token, expires_at
+             FROM live_sessions
+            WHERE hash = %s AND kind = 'call'
+              AND ended_at IS NULL AND expires_at > %s""",
+        (h, now_utc()),
+    )
+    return cur.fetchone()
+
+
+@live.post("/live/<h>/accept")
+def call_accept(h):
+    """The callee answers the 'ring' (the call link). Mints the callee's
+    push token — rotating on each ACCEPT, so a stale tab can't hijack a
+    later call on the same link. Returns both roles' ring names."""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            row = _get_call_session(cur, h)
+            if row is None:
+                return _burned()
+            sid = row[0]
+            callee_token = secrets.token_hex(32)
+            callee_hash = hashlib.sha256(callee_token.encode()).hexdigest()
+            cur.execute(
+                "UPDATE live_sessions SET callee_token = %s WHERE id = %s",
+                (callee_hash, sid),
+            )
+    r = _r()
+    if r is not None:
+        r.set(f"call-accepted:{h}", "1", ex=CALL_GRACE_S)
+    return jsonify(token=callee_token, kind="call")
+
+
+CALL_GRACE_S = 120  # accepted-flag window: the caller's UI polls for it
+
+
+@live.get("/live/<h>/ringing")
+def call_ringing(h):
+    """Caller-side poll: has the callee accepted yet?"""
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            row = _get_call_session(cur, h)
+            if row is None:
+                return _burned()
+    r = _r()
+    if r is None:
+        return jsonify(accepted=False)
+    return jsonify(accepted=bool(r.exists(f"call-accepted:{h}")))
+
+
 def _get_session_for_save(cur, h):
     """Save's contract: a session the creator manually ENDED (the UI
     order: END -> SAVE button) is saveable until its fuse expires;
@@ -116,7 +168,15 @@ def _ensure_live_schema(conn):
                 cur.execute(
                     "ALTER TABLE live_sessions ADD COLUMN kind TEXT "
                     "NOT NULL DEFAULT 'live' "
-                    "CHECK (kind IN ('live', 'chat'))"
+                    "CHECK (kind IN ('live', 'chat', 'call'))"
+                )
+            cur.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='live_sessions' AND column_name='callee_token'"
+            )
+            if cur.fetchone() is None:
+                cur.execute(
+                    "ALTER TABLE live_sessions ADD COLUMN callee_token TEXT"
                 )
         conn.commit()
     except Exception:  # noqa: BLE001 — live tables may not exist yet
@@ -146,8 +206,8 @@ def create_session():
     # ESC: a chat ROOM is a session of kind='chat' (no audio, no source
     # token — the room link is the only credential, as in the original)
     kind = body.get("kind", "live")
-    if kind not in ("live", "chat"):
-        return jsonify(error="kind must be live or chat"), 400
+    if kind not in ("live", "chat", "call"):
+        return jsonify(error="kind must be live, chat or call"), 400
     try:
         hours = float(body.get("maxhours", MAX_HOURS))
     except (TypeError, ValueError):
@@ -163,7 +223,7 @@ def create_session():
         if not 0 < cap <= 10000:
             return jsonify(error="cap must be within 1..10000"), 400
 
-    h = "L" + secrets.token_hex(16) if kind == "live" else "C" + secrets.token_hex(16)
+    h = ("L" if kind in ("live", "call") else "C") + secrets.token_hex(16)
     token = secrets.token_hex(32)
     # gate minor #4: store the HASH, never the raw token (constant-time
     # compare below works identically against the hash)
@@ -197,6 +257,19 @@ def create_session():
             session_hash=h,
             token=None,
             kind="chat",
+        )
+
+    if kind == "call":
+        # SEC CALL: one lifecycle, one fuse, one burn — two directions.
+        # The CALLER gets the source token now; the CALLEE mints one at
+        # ACCEPT. Rings are per-participant: live:<h>:A (caller pushes,
+        # callee polls) and live:<h>:B (callee pushes, caller polls).
+        # No server-side mixing: each browser plays the other's ring.
+        return jsonify(
+            listener_url=f"/call/{h}",   # the callee gate (the "ring")
+            session_hash=h,
+            token=token,                # caller's push token
+            kind="call",
         )
 
     return jsonify(
@@ -287,12 +360,27 @@ def live_seg(h):
     with _connect() as conn:
         with conn.cursor() as cur:
             row = _get_live_session(cur, h)
+            ring = f"live:{h}"      # the radio ring (per-session key)
             if row is None:
-                return _burned()
-            sid, real_token, _cap, expires_at = row
-    if not _token_ok(token, real_token):
-        return jsonify(error="bad or missing source token"), 401
-
+                # SEC CALL: either participant pushes — the token
+                # decides WHICH ring (A=caller, B=callee). No mixing.
+                crow = _get_call_session(cur, h)
+                if crow is None:
+                    return _burned()
+                sid, caller_hash, callee_hash, expires_at = crow
+                if callee_hash and _token_ok(token, callee_hash):
+                    ring = f"live:{h}:B"
+                    real_hash = callee_hash
+                elif _token_ok(token, caller_hash):
+                    ring = f"live:{h}:A"
+                    real_hash = caller_hash
+                else:
+                    return jsonify(error="bad or missing source token"), 401
+                row = (sid, token, None, expires_at)  # shape-compat below
+            else:
+                sid, real_hash, _cap, expires_at = row
+                if not _token_ok(token, real_hash):
+                    return jsonify(error="bad or missing source token"), 401
     f = request.files.get("data")
     if f is None:
         return jsonify(error="missing data chunk"), 400
@@ -310,10 +398,10 @@ def live_seg(h):
         int((expires_at - now_utc()).total_seconds()) + 60,
         SEG_TTL_FALLBACK_S,
     )
-    seq = int(r.rpush(f"live:{h}", data) or 1)
+    seq = int(r.rpush(ring, data) or 1)
     # gate major #1b: ring budget — keep only the last RING_MAX_CHUNKS
-    r.ltrim(f"live:{h}", -int(_cfg("RING_MAX_CHUNKS", RING_MAX_CHUNKS)), -1)
-    r.expire(f"live:{h}", ttl)
+    r.ltrim(ring, -int(_cfg("RING_MAX_CHUNKS", RING_MAX_CHUNKS)), -1)
+    r.expire(ring, ttl)
     # gate major #2: every push renews the 30s heartbeat
     r.set(f"live-hb:{h}", "1", ex=HEARTBEAT_S)
     return jsonify(seq=seq)
@@ -327,9 +415,14 @@ def live_poll(h):
         after = int(request.args.get("after", "0"))
     except ValueError:
         return jsonify(error="after must be an integer"), 400
+    ring_name = request.args.get("ring", "live")
+    if ring_name not in ("live", "A", "B"):
+        return jsonify(error="ring must be live, A or B"), 400
+    ring = f"live:{h}" if ring_name == "live" else f"live:{h}:{ring_name}"
     with _connect() as conn:
         with conn.cursor() as cur:
-            row = _get_live_session(cur, h)
+            # calls and live sessions both poll; rooms don't poll
+            row = _get_live_session(cur, h) or _get_call_session(cur, h)
             if row is None:
                 return _burned()
     r = _r()
@@ -342,11 +435,11 @@ def live_poll(h):
         r.expire(f"seat:{h}:{seat}", seat_ttl)
     # gate major #1c: bounded response window — a late joiner gets the
     # last POLL_MAX_SEGS segments, not the whole ring
-    length = int(r.llen(f"live:{h}") or 0)
+    length = int(r.llen(ring) or 0)
     start = max(after, length - int(_cfg("POLL_MAX_SEGS", POLL_MAX_SEGS)))
     segs = []
     if length > start:
-        raw = r.lrange(f"live:{h}", start, -1)
+        raw = r.lrange(ring, start, -1)
         segs = [base64.b64encode(b).decode("ascii") for b in raw]
     return jsonify(seq=length, segments=segs)
 
@@ -358,9 +451,29 @@ def live_end(h):
         with conn.cursor() as cur:
             row = _get_live_session(cur, h)
             if row is None:
-                return _burned()
-            sid, real_token, _cap, _exp = row
-            if not _token_ok(token, real_token):
+                # SEC CALL: EITHER party's hang-up burns it for BOTH
+                # (maintainer-locked): caller token OR callee token.
+                crow = _get_call_session(cur, h)
+                if crow is None:
+                    return _burned()
+                sid, caller_hash, callee_hash, _exp = crow
+                if not (
+                    (callee_hash and _token_ok(token, callee_hash))
+                    or _token_ok(token, caller_hash)
+                ):
+                    return jsonify(error="bad or missing source token"), 401
+                cur.execute(
+                    "UPDATE live_sessions SET ended_at = %s WHERE id = %s",
+                    (now_utc(), sid),
+                )
+                conn.commit()
+                r = _r()
+                if r is not None:
+                    r.delete(f"live:{h}", f"live:{h}:A", f"live:{h}:B",
+                             f"live-hb:{h}", f"call-accepted:{h}")
+                return jsonify(ended=True)
+            sid, real_hash, _cap, _exp = row
+            if not _token_ok(token, real_hash):
                 return jsonify(error="bad or missing source token"), 401
             cur.execute(
                 "UPDATE live_sessions SET ended_at = %s WHERE id = %s",

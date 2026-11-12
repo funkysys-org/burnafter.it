@@ -2,8 +2,12 @@
 CREATE TABLE IF NOT EXISTS live_sessions (
     id               BIGSERIAL PRIMARY KEY,
     hash             TEXT NOT NULL UNIQUE CHECK (length(hash) BETWEEN 20 AND 64),
-    kind             TEXT NOT NULL DEFAULT 'live' CHECK (kind IN ('live', 'chat')),
+    kind             TEXT NOT NULL DEFAULT 'live' CHECK (kind IN ('live', 'chat', 'call')),
     source_token     TEXT NOT NULL,          -- SHA-256 hex of the source
+                                                -- (caller, for kind='call')
+    callee_token     TEXT,                   -- SHA-256 hex of the callee's
+                                                -- token (kind='call' only;
+                                                -- rotates on each ACCEPT)
                                                 -- token; raw token never
                                                 -- stored; constant-time
                                                 -- compare against the hash;
