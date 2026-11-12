@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 const THEMES = [
+  { id: "puppa-night", label: "NIGHT" },
   { id: "radio-puppa", label: "PUPPA" },
   { id: "ember", label: "EMBER" },
   { id: "warm", label: "WARM" },
 ];
-const DEFAULT = "radio-puppa";
+const DEFAULT = "puppa-night";
 const ThemeCtx = createContext({ theme: DEFAULT, setTheme: () => {} });
 
 export function ThemeProvider({ children }) {

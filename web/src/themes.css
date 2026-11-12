@@ -6,7 +6,41 @@
 
 /* ── THEME TOKENS ──────────────────────────────────────────────── */
 
-:root, [data-theme="radio-puppa"] {
+[data-theme="puppa-night"] {
+  /* Radio Puppa 2006 — NIGHT: the same cassette soul on a dark shell.
+     Paper becomes near-black shell-brown; ink becomes cream; the
+     ruled-paper lines go faint-dark; the ember accent stays hot. */
+  --paper: #14100d;
+  --paper-lines: linear-gradient(rgba(247, 239, 220, 0.05) 1px, transparent 1px) 0 0 / 100% 28px;
+  --panel-bg: #1d1813;
+  --ink: #f2e9d8;
+  --dim: #a99e8c;
+  --orange: #ff4d00;
+  --orange-text: #14100d;
+  --red: #e63928;
+  --red-text: #14100d;
+  --green: #2fb553;
+  --green-text: #14100d;
+  --blue: #ffb38a;
+  --headline-accent: #ff6a2b;
+  --lcd-bg: #2a2118;
+  --lcd-ink: #ffd9a8;
+  --lcd-over: #472112;
+  --border: #f2e9d8;
+  --bevel-light: #3a3126;
+  --hard-shadow: 4px 4px 0 #f2e9d833;
+  --hard-shadow-sm: 3px 3px 0 #f2e9d833;
+  --chip-shadow: 2px 2px 0 #f2e9d833;
+  --press-shadow: 0 0 0 transparent;
+  --r-card: 0px;
+  --r-ctl: 0px;
+  --display-font: 'Silkscreen', monospace;
+  --body-font: Verdana, Tahoma, Geneva, sans-serif;
+  --mono-font: 'VT323', monospace;
+}
+
+
+:root, [data-theme="puppa-night"], [data-theme="radio-puppa"] {
   /* 02 Radio Puppa 2006 — paper & ink, radius 0, hard shadows */
   --paper: #f7efdc;
   --paper-lines: linear-gradient(rgba(38, 32, 26, 0.045) 1px, transparent 1px) 0 0 / 100% 28px;
