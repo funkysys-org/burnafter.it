@@ -133,3 +133,30 @@ def test_plain_mp4_video_still_rejected_on_audio_route(api):
         content_type="multipart/form-data",
     )
     assert r.status_code == 415
+
+
+def test_mov_video_from_iphone_camera_accepted(api):
+    """Mobile verification C: iPhone .mov files — ftyp 'qt' brand with
+    a video codec in the moov box. The codec-based sniffing (gate
+    round) already classifies them; this locks it in the suite."""
+    # ftyp: size(4) 'ftyp' 'qt  ' minor(4) + moov with avc1
+    body = b"ftyp" + b"qt  " + b"\x00\x00\x00\x00" + b"qt  "
+    ftyp = (4 + len(body)).to_bytes(4, "big") + body
+    stsd = b"\x00" * 16 + b"avc1" + b"\x00" * 24
+    moov_body = b"moov" + stsd
+    moov = (4 + len(moov_body)).to_bytes(4, "big") + moov_body
+    payload = ftyp + moov + b"\x00" * 64
+
+    r = api.post(
+        "/post/video",
+        data={
+            "data": (io.BytesIO(payload), "clip.mov"),
+            "maxhits": "1",
+            "maxtime": "60",
+        },
+        content_type="multipart/form-data",
+    )
+    assert r.status_code == 200, r.get_data(as_text=True)
+    served = api.get(r.get_json()["url"])
+    assert served.status_code == 200
+    assert served.mimetype == "video/mp4"

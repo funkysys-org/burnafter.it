@@ -1,6 +1,7 @@
 // Radio Puppa Live — source-side streaming client (creator browser).
 // getUserMedia -> MediaRecorder -> 3s chunks -> /live/<h>/seg?token=…
 import { reduced } from "./pages/HomePage";
+import { pickRecordMime, sniffContainer, playbackMime } from "./mobilemedia";
 
 export const CHUNK_MS = 3000;
 
@@ -80,9 +81,11 @@ export class LiveSource {
         throw e;
       }
     }
-    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus"
-      : "audio/webm";
+    const mime = pickRecordMime();
+    if (!mime) {
+      throw new Error("this browser can't broadcast (no MediaRecorder support)");
+    }
+    this.container = mime.startsWith("audio/mp4") ? "mp4" : "webm";
     this.recorder = new MediaRecorder(this.stream, {
       mimeType: mime,
       audioBitsPerSecond: this.music ? MUSIC_BITRATE : VOICE_BITRATE,
@@ -127,22 +130,44 @@ export class LivePlayer {
   }
 
   async start() {
-    // gate minor #5: honest degradation — can this browser tune in at all?
-    const MIME = "audio/webm; codecs=opus";
-    if (typeof MediaSource === "undefined" || !MediaSource.isTypeSupported(MIME)) {
+    // gate minor #5 + mobile fix B: the source may send webm (Chrome)
+    // OR mp4/AAC (Safari iOS) — sniff the first chunk and build the
+    // SourceBuffer for the RIGHT container, or degrade honestly.
+    if (typeof MediaSource === "undefined") {
       this.unsupported = true;
       this.onUnsupported?.();
       return;
     }
     this.running = true;
+    this.timer = setInterval(() => this._poll(), this.pollMs);
+    await this._poll(); // first poll fills this.containerMime (or ends)
+    if (this.unsupported) return;
+    if (!this.containerMime) {
+      // no segments yet: retry when the first chunk arrives
+      const wait = setInterval(() => {
+        if (this.containerMime || this.unsupported) {
+          clearInterval(wait);
+          if (!this.unsupported) this._openMediaSource();
+        }
+      }, 500);
+      return;
+    }
+    this._openMediaSource();
+  }
+
+  _openMediaSource() {
     this.mediaSource = new MediaSource();
     this.el.src = URL.createObjectURL(this.mediaSource);
     this.mediaSource.addEventListener("sourceopen", () => {
-      this.sourceBuffer = this.mediaSource.addSourceBuffer(MIME);
+      if (!MediaSource.isTypeSupported(this.containerMime)) {
+        this.unsupported = true;
+        this.onUnsupported?.();
+        return;
+      }
+      this.sourceBuffer = this.mediaSource.addSourceBuffer(this.containerMime);
       this.sourceBuffer.addEventListener("updateend", () => this._drain());
+      this._drain(); // segments may have queued while opening
     });
-    this.timer = setInterval(() => this._poll(), this.pollMs);
-    await this._poll();
   }
 
   async _poll() {
@@ -161,7 +186,13 @@ export class LivePlayer {
       if (!r.ok) return;
       const j = await r.json();
       for (const b64 of j.segments) {
-        this.queue.push(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        if (!this.containerMime) {
+          // mobile fix B: sniff the ACTUAL container of the stream
+          const c = sniffContainer(bytes.buffer);
+          this.containerMime = playbackMime(c);
+        }
+        this.queue.push(bytes);
       }
       this.seq = j.seq;
       this._drain();

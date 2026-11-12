@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import qrcode from "qrcode-generator";
 import { reduced, Masthead } from "./HomePage";
+import { convertToJpeg } from "../mobilemedia";
 
 const TYPES = [
   { id: "text", label: "TEXT", limit: "≤ 10 KB" },
@@ -59,6 +60,7 @@ export default function CreatorPage() {
   const [resultUrl, setResultUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const [converting, setConverting] = useState(false);
   const fileRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -212,7 +214,11 @@ export default function CreatorPage() {
           </div>
         ) : (
           <div className="panel" style={{ marginTop: 8 }}>
-            {file ? (
+            {converting ? (
+              <p className="lcd" style={{ fontSize: 14 }}>
+                CONVERTING TO JPEG… (HEIC from the camera)
+              </p>
+            ) : file ? (
               <p>📼 {file.name} — {(file.size / 1048576).toFixed(1)} MB{" "}
                  <button className="bevel" style={{ minHeight: 0, padding: "4px 10px",
                        fontSize: 10 }}
@@ -226,7 +232,30 @@ export default function CreatorPage() {
             <input ref={fileRef} type="file" hidden
                    accept={type === "photo" ? "image/*" :
                            type === "audio" ? "audio/*" : "video/*"}
-                   onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+                   onChange={async (e) => {
+                     const f = e.target.files?.[0] ?? null;
+                     e.target.value = ""; // allow re-picking the same file
+                     if (!f) return;
+                     if (type !== "photo" ||
+                         f.type === "image/jpeg" || f.type === "image/png" ||
+                         /\\.(jpe?g|png)$/i.test(f.name)) {
+                       setFile(f);
+                       return;
+                     }
+                     // mobile fix A: HEIC/HEIF (iOS camera default) or any
+                     // image the server allowlist doesn't take — decode
+                     // and re-encode as JPEG via canvas before upload
+                     try {
+                       setConverting(true);
+                       const jpg = await convertToJpeg(f);
+                       setFile(jpg);
+                     } catch {
+                       setError("couldn't convert this image in your browser — " +
+                                "save it as JPEG and try again");
+                     } finally {
+                       setConverting(false);
+                     }
+                   }} />
           </div>
         )}
       </section>
