@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import qrcode from "qrcode-generator";
 import { reduced, Masthead } from "./HomePage";
+import ShareButton from "../ShareButton";
 import { convertToJpeg } from "../mobilemedia";
 
 const TYPES = [
@@ -58,7 +59,6 @@ export default function CreatorPage() {
   const [phase, setPhase] = useState("idle"); // idle|uploading|result
   const [pct, setPct] = useState(0);
   const [resultUrl, setResultUrl] = useState("");
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [converting, setConverting] = useState(false);
   const fileRef = useRef(null);
@@ -124,16 +124,6 @@ export default function CreatorPage() {
     setCopied(false); setPct(0);
   }
 
-  async function copyUrl() {
-    try { await navigator.clipboard.writeText(resultUrl); }
-    catch {
-      const ta = document.createElement("textarea");
-      ta.value = resultUrl; document.body.appendChild(ta);
-      ta.select(); document.execCommand("copy"); ta.remove();
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  }
 
   if (phase === "result") {
     return (
@@ -155,9 +145,7 @@ export default function CreatorPage() {
             {resultUrl}
           </div>
           <div>
-            <button className="bevel" onClick={copyUrl} aria-pressed={copied}>
-              {copied ? "COPIED!" : "COPY THE LINK"}
-            </button>
+            <ShareButton url={resultUrl} title="burnafter.it — ephemeral link" />
           </div>
           <div style={{ margin: "18px 0" }}>
             <img src={qrSrc} alt="QR code of the secret link"

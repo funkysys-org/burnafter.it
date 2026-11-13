@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import qrcode from "qrcode-generator";
 import { reduced, Masthead } from "./HomePage";
+import ShareButton from "../ShareButton";
 import { LiveSource, createLiveSession } from "../live";
 import { LivePlayer } from "../live";
 
@@ -15,7 +16,6 @@ export default function CallPage() {
   ); // idle|ringing|incall|incoming|burned|ended
   const [err, setErr] = useState("");
   const [callUrl, setCallUrl] = useState("");
-  const [copied, setCopied] = useState(false);
   const sessRef = useRef(null);           // { session_hash, token, role }
   const callerSrcRef = useRef(null);
   const calleeSrcRef = useRef(null);
@@ -45,12 +45,6 @@ export default function CallPage() {
     player.start();
   }
 
-  async function copyLink() {
-    try { await navigator.clipboard.writeText(callUrl); }
-    catch { /* clipboard may be blocked — the URL stays visible */ }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
-  }
 
   async function createCall() {
     setErr("");
@@ -177,9 +171,7 @@ export default function CallPage() {
             {callUrl}
           </div>
           <div style={{ margin: "12px 0" }}>
-            <button className="bevel" onClick={copyLink}>
-              {copied ? "COPIED!" : "COPY THE LINK"}
-            </button>
+            <ShareButton url={callUrl} title="SEC CALL — the link is the ring" />
           </div>
           {qrSrc && (
             <div style={{ margin: "12px 0" }}>

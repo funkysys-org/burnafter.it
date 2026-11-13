@@ -6,7 +6,6 @@ import { Masthead } from "./HomePage";
 export default function ChatPage() {
   const [roomUrl, setRoomUrl] = useState("");
   const [roomErr, setRoomErr] = useState("");
-  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const qrSrc = useMemo(() => {
@@ -36,16 +35,6 @@ export default function ChatPage() {
     }
   }
 
-  async function copy() {
-    try { await navigator.clipboard.writeText(roomUrl); }
-    catch {
-      const ta = document.createElement("textarea");
-      ta.value = roomUrl; document.body.appendChild(ta);
-      ta.select(); document.execCommand("copy"); ta.remove();
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  }
 
   return (
     <main>
@@ -65,9 +54,7 @@ export default function ChatPage() {
               {roomUrl}
             </div>
             <div>
-              <button className="bevel" onClick={copy} aria-pressed={copied}>
-                {copied ? "COPIED!" : "COPY THE LINK"}
-              </button>{" "}
+              <ShareButton url={roomUrl} title="ESC — ephemeral chat room" />{" "}
               <a className="bevel" href={roomUrl}>► ENTER THE ROOM</a>
             </div>
             {qrSrc && (

@@ -22,7 +22,6 @@ export default function StudioPage() {
   const [err, setErr] = useState("");
   const srcRef = useRef(null);
   const sessRef = useRef(null);
-  const [copied, setCopied] = useState(false);
   // Tier A: input device + tape type (persisted; labels need a granted
   // mic once — the browser rule, noted in the UI not hidden)
   const [devices, setDevices] = useState([]);
@@ -104,15 +103,6 @@ export default function StudioPage() {
     }
   }
 
-  async function copy() {
-    try { await navigator.clipboard.writeText(listenerUrl); }
-    catch {
-      const ta = document.createElement("textarea");
-      ta.value = listenerUrl; document.body.appendChild(ta);
-      ta.select(); document.execCommand("copy"); ta.remove();
-    }
-    setCopied(true); setTimeout(() => setCopied(false), 1600);
-  }
 
   if (phase === "live" || phase === "ended" || phase === "saved") {
     return (
@@ -170,9 +160,7 @@ export default function StudioPage() {
               {listenerUrl}
             </div>
             <div>
-              <button className="bevel" onClick={copy} aria-pressed={copied}>
-                {copied ? "COPIED!" : "COPY THE LINK"}
-              </button>
+              <ShareButton url={listenerUrl} title="Radio Puppa — live session" />
             </div>
             {listenerQr && (
               <div style={{ margin: "14px 0" }}>
