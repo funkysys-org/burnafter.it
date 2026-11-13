@@ -194,48 +194,35 @@ def test_themes_night_and_puppa_are_actually_different():
     with open(os.path.join(REPO, "web", "src", "themes.css")) as fh:
         css = fh.read()
 
-    def resolve(theme):
+    def resolve(theme=None):
         # strip comments first — they carry colons and prose that
         # would poison naive decl parsing
         css_nc = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        own = f'[data-theme="{theme}"]' if theme else None
         values = {}
-        own_selector = f'[data-theme="{theme}"]'
+        # file order IS the cascade: on equal specificity the LATER
+        # block wins, so apply every matching block in order and let
+        # later declarations overwrite earlier ones.
         for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css_nc):
             sels = [s.strip() for s in m.group(1).split(",")]
-            # a data-theme block applies ONLY when its attribute matches;
-            # :root applies only when NO data-theme block matched first
-            if own_selector in sels:
-                applies = True
-            elif ":root" in sels and theme is None:
-                applies = True
-            else:
-                applies = False
-            if applies:
+            if ":root" in sels or (own and own in sels):
                 for decl in m.group(2).split(";"):
                     if re.match(r"\s*--[\w-]+\s*:", decl):
                         k, v = decl.split(":", 1)
                         values[k.strip()] = v.strip()
         return values
 
-    # the default (no data-theme set) resolves :root alone
-    def resolve_default():
-        css_nc = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-        values = {}
-        for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css_nc):
-            sels = [s.strip() for s in m.group(1).split(",")]
-            if ":root" in sels:
-                for decl in m.group(2).split(";"):
-                    if re.match(r"\s*--[\w-]+\s*:", decl):
-                        k, v = decl.split(":", 1)
-                        values[k.strip()] = v.strip()
-        return values
-
-    night, puppa = resolve("puppa-night"), resolve("radio-puppa")
-    default = resolve_default()
-    assert night, "no tokens resolve for puppa-night"
+    default, night = resolve(), resolve("puppa-night")
+    puppa, ember, warm = resolve("radio-puppa"), resolve("ember"), resolve("warm")
     assert default.get("--paper") == "#14100d", "the DEFAULT must be night (dark)"
     assert night.get("--paper") == "#14100d", "night must be dark-shell"
     assert puppa.get("--paper") == "#f7efdc", "light puppa stays paper"
+    assert ember.get("--paper") == "#0e0c0a", (
+        "EMBER must override the default — if this is #14100d, the :root "
+        "block sits AFTER the theme blocks and squashes every choice "
+        "(live-reported: theme switcher dead). :root goes FIRST."
+    )
+    assert warm.get("--paper") == "#faf6ef", "WARM must override the default too"
     assert night.get("--paper") != puppa.get("--paper"), (
         "PUPPA NIGHT and PUPPA collapsed into the same skin — check the "
         "selector aliasing and block order in themes.css"
