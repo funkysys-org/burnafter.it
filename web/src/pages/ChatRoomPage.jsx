@@ -1,7 +1,28 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import qrcode from "qrcode-generator";
 import { reduced, Masthead } from "./HomePage";
 import LiveChat from "../LiveChat";
+
+// the classic QR glyph — three corners + a few modules, inline SVG so
+// it inherits the ink color in every theme
+function QrIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"
+         style={{ verticalAlign: "-1px", display: "inline-block" }}>
+      <rect x="0" y="0" width="4" height="4" fill="currentColor" />
+      <rect x="1" y="1" width="2" height="2" fill="var(--panel-bg)" />
+      <rect x="8" y="0" width="4" height="4" fill="currentColor" />
+      <rect x="9" y="1" width="2" height="2" fill="var(--panel-bg)" />
+      <rect x="0" y="8" width="4" height="4" fill="currentColor" />
+      <rect x="1" y="9" width="2" height="2" fill="var(--panel-bg)" />
+      <rect x="6" y="6" width="2" height="2" fill="currentColor" />
+      <rect x="9" y="8" width="2" height="2" fill="currentColor" />
+      <rect x="6" y="0" width="1" height="1" fill="currentColor" />
+      <rect x="0" y="6" width="1" height="1" fill="currentColor" />
+    </svg>
+  );
+}
 
 function fmtFuse(iso) {
   const ms = new Date(iso).getTime() - Date.now();
@@ -16,7 +37,17 @@ export default function ChatRoomPage() {
   const [phase, setPhase] = useState("gate"); // gate|room|burned
   const [meta, setMeta] = useState(null);
   const [fuse, setFuse] = useState("");
+  const [qrOpen, setQrOpen] = useState(false);
   const [nick] = useState(() => "Listener-" + String(Math.floor(1000 + Math.random() * 9000)));
+
+  // the REAL room URL — the link is the whole room, so it's the QR
+  const roomUrl = `${location.origin}/chat/${hash}`;
+  const qrSrc = useMemo(() => {
+    const qr = qrcode(0, "M");
+    qr.addData(roomUrl);
+    qr.make();
+    return qr.createDataURL(4, 4);
+  }, [roomUrl]);
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -73,8 +104,39 @@ export default function ChatRoomPage() {
       <Masthead />
       <section style={{ textAlign: "center" }}>
         <span className="chip live"><span className="lamp blink" /> ROOM OPEN</span>{" "}
-        {meta && <span className="chip neutral">BURNS IN {fuse}</span>}
+        {meta && <span className="chip neutral">BURNS IN {fuse}</span>}{" "}
+        <button className="chip neutral" title="show the room QR"
+                aria-pressed={qrOpen} onClick={() => setQrOpen(true)}
+                style={{ cursor: "pointer", fontSize: 11 }}>
+          <QrIcon /> QR
+        </button>
       </section>
+
+      {qrOpen && (
+        <div role="dialog" aria-label="room QR"
+             onClick={() => setQrOpen(false)}
+             style={{ position: "fixed", inset: 0, background: "#000000b3",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      zIndex: 50, padding: 16 }}>
+          <div className="panel" onClick={(e) => e.stopPropagation()}
+               style={{ maxWidth: 340, width: "100%", textAlign: "center" }}>
+            <div className="sec-label">SCAN TO JOIN</div>
+            {/* white pad behind the QR: modules are dark-on-transparent —
+                on the NIGHT shell a bare QR would be unscannable */}
+            <img src={qrSrc} alt="QR code of the room link"
+                 width={220} height={220}
+                 style={{ background: "#fff", padding: 8, imageRendering: "pixelated" }} />
+            <div className="lcd" style={{ fontSize: 12, overflowWrap: "anywhere",
+                     display: "inline-block", maxWidth: "100%", marginTop: 8 }}>
+              {roomUrl}
+            </div>
+            <p className="dim small" style={{ marginTop: 8 }}>
+              the room is the link — whoever scans it joins anonymously
+            </p>
+            <button className="bevel" onClick={() => setQrOpen(false)}>CLOSE</button>
+          </div>
+        </div>
+      )}
       <LiveChat hash={hash} nick={nick} active={phase === "room"} />
       <section style={{ textAlign: "center" }}>
         <Link to="/" className="bevel">◄ LEAVE THE ROOM</Link>
