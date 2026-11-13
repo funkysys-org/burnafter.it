@@ -182,6 +182,70 @@ def test_no_spa_page_route_is_swallowed_by_the_api_proxy():
     )
 
 
+def test_themes_night_and_puppa_are_actually_different():
+    """Live-reported: PUPPA NIGHT rendered identical to light Puppa —
+    the night block was never inserted (a silent str.replace no-op),
+    while :root (light tokens) was aliased to puppa-night. A cascade
+    simulation proves the default skin is DARK and distinct from the
+    light choice — and guards against any future selector aliasing
+    that flattens two themes into one."""
+    import re
+
+    with open(os.path.join(REPO, "web", "src", "themes.css")) as fh:
+        css = fh.read()
+
+    def resolve(theme):
+        # strip comments first — they carry colons and prose that
+        # would poison naive decl parsing
+        css_nc = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        values = {}
+        own_selector = f'[data-theme="{theme}"]'
+        for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css_nc):
+            sels = [s.strip() for s in m.group(1).split(",")]
+            # a data-theme block applies ONLY when its attribute matches;
+            # :root applies only when NO data-theme block matched first
+            if own_selector in sels:
+                applies = True
+            elif ":root" in sels and theme is None:
+                applies = True
+            else:
+                applies = False
+            if applies:
+                for decl in m.group(2).split(";"):
+                    if re.match(r"\s*--[\w-]+\s*:", decl):
+                        k, v = decl.split(":", 1)
+                        values[k.strip()] = v.strip()
+        return values
+
+    # the default (no data-theme set) resolves :root alone
+    def resolve_default():
+        css_nc = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        values = {}
+        for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css_nc):
+            sels = [s.strip() for s in m.group(1).split(",")]
+            if ":root" in sels:
+                for decl in m.group(2).split(";"):
+                    if re.match(r"\s*--[\w-]+\s*:", decl):
+                        k, v = decl.split(":", 1)
+                        values[k.strip()] = v.strip()
+        return values
+
+    night, puppa = resolve("puppa-night"), resolve("radio-puppa")
+    default = resolve_default()
+    assert night, "no tokens resolve for puppa-night"
+    assert default.get("--paper") == "#14100d", "the DEFAULT must be night (dark)"
+    assert night.get("--paper") == "#14100d", "night must be dark-shell"
+    assert puppa.get("--paper") == "#f7efdc", "light puppa stays paper"
+    assert night.get("--paper") != puppa.get("--paper"), (
+        "PUPPA NIGHT and PUPPA collapsed into the same skin — check the "
+        "selector aliasing and block order in themes.css"
+    )
+    assert night.get("--display-font") == puppa.get("--display-font"), (
+        "both puppas keep the cassette soul (Silkscreen) — night is a "
+        "COLOR change, not a different personality"
+    )
+
+
 def test_compose_mounts_both_schemas_for_fresh_volumes():
     with open(os.path.join(REPO, "docker-compose.yml")) as fh:
         compose = fh.read()
