@@ -37,16 +37,14 @@ export function useTheme() {
 
 export function ThemeSwitch() {
   const { theme, setTheme } = useTheme();
+  const idx = Math.max(0, THEMES.findIndex((t) => t.id === theme));
+  const next = THEMES[(idx + 1) % THEMES.length];
   return (
-    <div className="theme-switch" role="group"
-         aria-label="theme" style={{ display: "inline-flex" }}>
-      {THEMES.map((t) => (
-        <button key={t.id} aria-pressed={theme === t.id}
-                title={`theme: ${t.id}`}
-                onClick={() => setTheme(t.id)}>
-          {t.label}
-        </button>
-      ))}
-    </div>
+    <button className="theme-switch" type="button"
+            title={`theme: ${THEMES[idx].id} — click to switch to ${next.label}`}
+            aria-label={`theme: ${THEMES[idx].label}. activate to switch to ${next.label}`}
+            onClick={() => setTheme(next.id)}>
+      ◐ {THEMES[idx].label} ▸
+    </button>
   );
 }

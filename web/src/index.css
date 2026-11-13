@@ -121,29 +121,21 @@ textarea { min-height: 140px; resize: vertical; }
 .dim { color: var(--dim); }
 .small { font-size: 11px; }
 
-/* theme switcher */
+/* theme switcher — one cycling button (◐ current ▸) */
 .theme-switch {
-  display: inline-flex;
-  border: 2px solid var(--border);
-  border-radius: var(--r-ctl);
-  overflow: hidden;
-  box-shadow: var(--chip-shadow);
-}
-.theme-switch button {
+  display: inline-block;
   font-family: var(--mono-font);
   font-size: 11px;
   padding: 8px 12px;
   min-height: 44px;
-  min-width: 44px;
-  border: none;
+  border: 2px solid var(--border);
+  border-radius: var(--r-ctl);
   background: var(--panel-bg);
   color: var(--ink);
+  box-shadow: var(--chip-shadow);
   cursor: pointer;
 }
-.theme-switch button[aria-pressed="true"] {
-  background: var(--orange);
-  color: var(--orange-text);
-}
+.theme-switch:hover { background: var(--orange); color: var(--orange-text); }
 
 /* lamp + reels */
 @keyframes lampblink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.25; } }
