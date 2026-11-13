@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 const THEMES = [
   { id: "puppa-night", label: "antani" },
-  { id: "radio-puppa", label: "pupp" },
+  { id: "radio-puppa", label: "puppa" },
   { id: "ember", label: "ember" },
   { id: "warm", label: "warm" },
 ];
