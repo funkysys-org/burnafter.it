@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 const THEMES = [
-  { id: "puppa-night", label: "NIGHT" },
-  { id: "radio-puppa", label: "PUPPA" },
-  { id: "ember", label: "EMBER" },
-  { id: "warm", label: "WARM" },
+  { id: "puppa-night", label: "antani" },
+  { id: "radio-puppa", label: "pupp" },
+  { id: "ember", label: "ember" },
+  { id: "warm", label: "warm" },
 ];
 const DEFAULT = "puppa-night";
 const ThemeCtx = createContext({ theme: DEFAULT, setTheme: () => {} });
