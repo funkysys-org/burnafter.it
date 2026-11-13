@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import qrcode from "qrcode-generator";
 import { Masthead } from "./HomePage";
+import AlfaBanner from "../AlfaBanner";
 import { ThemeSwitch } from "../theme";
 import LiveChat from "../LiveChat";
 import {
@@ -108,6 +109,7 @@ export default function StudioPage() {
     return (
       <main>
         <Masthead />
+        <AlfaBanner />
         <section style={{ textAlign: "center" }}>
           {phase === "live" && (
             <>
@@ -203,6 +205,7 @@ export default function StudioPage() {
   return (
     <main>
       <Masthead />
+        <AlfaBanner />
       <section>
         <div className="sec-label">NEW LIVE SESSION</div>
         <h1 style={{ fontSize: "clamp(24px,6vw,40px)" }}>GO LIVE · RADIO PUPPA</h1>

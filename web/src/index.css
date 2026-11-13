@@ -121,6 +121,18 @@ textarea { min-height: 140px; resize: vertical; }
 .dim { color: var(--dim); }
 .small { font-size: 11px; }
 
+/* alfa-testing banner (radio + call surfaces) */
+.alfa-banner {
+  background: var(--orange);
+  color: var(--orange-text);
+  font-family: var(--mono-font);
+  font-size: 12px;
+  text-align: center;
+  padding: 6px 10px;
+  border-bottom: 2px solid var(--border);
+  letter-spacing: 0.5px;
+}
+
 /* theme switcher — one cycling button (◐ current ▸) */
 .theme-switch {
   display: inline-block;

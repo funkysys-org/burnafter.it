@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { reduced, Masthead } from "./HomePage";
+import AlfaBanner from "../AlfaBanner";
 import LiveChat from "../LiveChat";
 import { LivePlayer } from "../live";
 
@@ -112,6 +113,7 @@ export default function LivePage() {
     return (
       <main>
         <Masthead />
+        <AlfaBanner />
         <section style={{ textAlign: "center", padding: "40px 0" }}>
           <div style={{ fontSize: 64 }}>📻</div>
           <h1 style={{ fontFamily: "var(--display-font)" }}>ON AIR</h1>
@@ -135,6 +137,7 @@ export default function LivePage() {
   return (
     <main>
       <Masthead />
+        <AlfaBanner />
       <section style={{ textAlign: "center" }}>
         <span className="chip live"><span className="lamp blink" /> ON AIR — LIVE</span>{" "}
         {meta && <span className="chip neutral">TAPE BURNS IN {fuse}</span>}{" "}

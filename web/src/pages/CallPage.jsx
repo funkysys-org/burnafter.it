@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import qrcode from "qrcode-generator";
 import { reduced, Masthead } from "./HomePage";
+import AlfaBanner from "../AlfaBanner";
 import ShareButton from "../ShareButton";
 import { LiveSource, createLiveSession } from "../live";
 import { LivePlayer } from "../live";
@@ -134,6 +135,7 @@ export default function CallPage() {
     return (
       <main>
         <Masthead />
+        <AlfaBanner />
         <section style={{ textAlign: "center", padding: "40px 0" }}>
           <div style={{ fontSize: 64 }}>📞</div>
           <h1 style={{ fontFamily: "var(--display-font)" }}>
@@ -159,6 +161,7 @@ export default function CallPage() {
     return (
       <main>
         <Masthead />
+        <AlfaBanner />
         <section style={{ textAlign: "center", padding: "30px 0" }}>
           <span className="chip live"><span className="lamp blink" /> RINGING…</span>
           <p className="dim" style={{ margin: "14px 0" }}>
@@ -194,6 +197,7 @@ export default function CallPage() {
     return (
       <main>
         <Masthead />
+        <AlfaBanner />
         <section style={{ textAlign: "center", padding: "20px 0" }}>
           <span className="chip live"><span className="lamp blink" /> ON THE TAPE</span>{" "}
           <span className="chip neutral">ANONYMOUS · NOTHING RECORDED</span>
@@ -223,6 +227,7 @@ export default function CallPage() {
   return (
     <main>
       <Masthead />
+        <AlfaBanner />
       <section style={{ textAlign: "center", padding: "30px 0" }}>
         <div className="sec-label">SEC · SECURE EPHEMERAL CALL</div>
         <h1 style={{ fontSize: "clamp(24px,6vw,40px)" }}>PHONE</h1>
