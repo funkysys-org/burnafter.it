@@ -15,6 +15,7 @@ export default function CallPage() {
   ); // idle|ringing|incall|incoming|burned|ended
   const [err, setErr] = useState("");
   const [callUrl, setCallUrl] = useState("");
+  const [copied, setCopied] = useState(false);
   const sessRef = useRef(null);           // { session_hash, token, role }
   const callerSrcRef = useRef(null);
   const calleeSrcRef = useRef(null);
@@ -42,6 +43,13 @@ export default function CallPage() {
       null, role === "caller" ? "B" : "A",  // poll the OTHER's ring
     );
     player.start();
+  }
+
+  async function copyLink() {
+    try { await navigator.clipboard.writeText(callUrl); }
+    catch { /* clipboard may be blocked — the URL stays visible */ }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
   }
 
   async function createCall() {
@@ -167,6 +175,11 @@ export default function CallPage() {
           <div className="lcd" style={{ display: "inline-block", maxWidth: "100%",
                    overflowWrap: "anywhere", textAlign: "left", margin: "10px 0" }}>
             {callUrl}
+          </div>
+          <div style={{ margin: "12px 0" }}>
+            <button className="bevel" onClick={copyLink}>
+              {copied ? "COPIED!" : "COPY THE LINK"}
+            </button>
           </div>
           {qrSrc && (
             <div style={{ margin: "12px 0" }}>
