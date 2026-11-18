@@ -144,13 +144,10 @@ def _parse_open_at(form, now):
 def _ensure_shouts_schema(conn):
     """Boot migration: existing volumes never re-run initdb — add the
     open_at column idempotently (same pattern as live.py's live schema)."""
+    # IF NOT EXISTS: idempotent AND race-free — two gunicorn workers
+    # booting concurrently can't lose a check-then-ALTER race
     with conn.cursor() as cur:
-        cur.execute(
-            "SELECT 1 FROM information_schema.columns "
-            "WHERE table_name='shouts' AND column_name='open_at'"
-        )
-        if cur.fetchone() is None:
-            cur.execute("ALTER TABLE shouts ADD COLUMN open_at TIMESTAMP")
+        cur.execute("ALTER TABLE shouts ADD COLUMN IF NOT EXISTS open_at TIMESTAMP")
     conn.commit()
 
 

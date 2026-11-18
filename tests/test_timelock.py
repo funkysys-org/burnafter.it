@@ -272,3 +272,64 @@ def test_sealed_shout_survives_reaper(api, db):
     ).fetchone()[0] is True
     db.commit()
     assert api.get(f"/stream_any/text/{h}").status_code == 425
+
+
+def test_reap_dead_live_spares_rooms_and_calls(live_api, live_db):
+    """Gate critical (reviewer, 2026-11-17): the heartbeat-death sweep
+    selected ALL kinds — rooms never carry an hb key and a ringing call
+    gets one only at its first push, so the first cleanup cron would end
+    every room (SEALED ones included) and every ringing call. The sweep
+    is RADIO-ONLY now; rooms and calls die by expiry.
+    Regression: open room + sealed room + ringing call + a radio with a
+    dead heartbeat -> only the radio is swept."""
+    import redis as redis_lib
+
+    from live import reap_dead_live
+
+    # an OPEN room and a SEALED room
+    open_room = live_api.post("/live", json={"kind": "chat", "maxhours": 2})
+    assert open_room.status_code == 200
+    h_open = open_room.get_json()["session_hash"]
+    sealed_room = live_api.post(
+        "/live", json={"kind": "chat", "maxhours": 2, "open_at": _in(120)}
+    )
+    assert sealed_room.status_code == 200
+    h_sealed = sealed_room.get_json()["session_hash"]
+
+    # a RINGING call (accepted, no audio pushed yet -> no hb key)
+    call = live_api.post("/live", json={"kind": "call", "maxhours": 1})
+    assert call.status_code == 200
+    cj = call.get_json()
+    h_call = cj["session_hash"]
+    assert live_api.post(f"/live/{h_call}/accept").status_code == 200
+
+    # a RADIO with a live heartbeat
+    radio = live_api.post("/live", json={"kind": "live", "maxhours": 1})
+    assert radio.status_code == 200
+    rj = radio.get_json()
+    h_radio, tok_radio = rj["session_hash"], rj["token"]
+    r = redis_lib.from_url("redis://localhost:6379/15")
+    assert r.exists(f"live-hb:{h_radio}")
+
+    # kill the radio's heartbeat and let it expire
+    r.delete(f"live-hb:{h_radio}")
+    # (rooms/calls never had one; the old code would now kill ALL four)
+
+    ended, _deleted = reap_dead_live(live_db)
+
+    # the radio died — the sweep still does its real job. (>= not ==:
+    # other tests' radios with expired TTLs may still be in the table —
+    # the live_db fixture truncates on ITS schedule, not ours)
+    assert ended >= 1
+    assert live_api.get(f"/live/{h_radio}/meta").status_code == 404
+
+    # the rooms and the ringing call SURVIVED the sweep
+    assert live_api.get(f"/live/{h_open}/meta").status_code == 200
+    m = live_api.get(f"/live/{h_sealed}/meta")
+    assert m.status_code == 200
+    assert m.get_json()["sealed"] is True  # the SCATOLA promise holds
+    assert live_api.get(f"/live/{h_call}/ringing").status_code == 200
+    assert (
+        live_api.post(f"/live/{h_open}/say", json={"nickname": "x", "body": "alive"})
+        .status_code == 200
+    )

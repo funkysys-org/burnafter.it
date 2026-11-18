@@ -211,6 +211,20 @@ def _ensure_live_schema(conn):
                 "SELECT 1 FROM information_schema.columns "
                 "WHERE table_name='live_sessions' AND column_name='open_at'"
             )
+            # NOTE: check-then-ALTER here (NOT "IF NOT EXISTS"):
+            # _ensure_live_schema runs on EVERY /live create — an
+            # ALTER ... IF NOT EXISTS takes an ACCESS EXCLUSIVE lock
+            # even when the column already exists, serializing every
+            # create behind any open transaction (live-verified: the
+            # suite hang, 2026-11-17). The catalog check is lock-free
+            # in steady state; the TOCTOU only bites two workers
+            # booting a LEGACY volume simultaneously — self-heals on
+            # respawn. IF NOT EXISTS belongs on BOOT-only migrations
+            # (see app.py _ensure_shouts_schema).
+            cur.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='live_sessions' AND column_name='open_at'"
+            )
             if cur.fetchone() is None:
                 cur.execute("ALTER TABLE live_sessions ADD COLUMN open_at TIMESTAMP")
         conn.commit()
@@ -759,9 +773,16 @@ def reap_dead_live(conn) -> tuple:
     ended = 0
     try:
         with conn.cursor() as cur:
+            # Heartbeat-death applies to RADIO sessions ONLY (gate
+            # critical, 2026-11-17): rooms never get an hb key and a
+            # ringing call gets one only at its first push — an
+            # unfiltered sweep ends every room (SEALED ones included —
+            # the SCATOLA promise broken before the box even opens)
+            # and every ringing call on the first cleanup cron.
             cur.execute(
                 """SELECT id, hash FROM live_sessions
-                    WHERE ended_at IS NULL AND expires_at > %s""",
+                    WHERE ended_at IS NULL AND expires_at > %s
+                      AND kind = 'live'""",
                 (now_utc(),),
             )
             rows = cur.fetchall()
