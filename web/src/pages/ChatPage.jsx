@@ -7,6 +7,9 @@ export default function ChatPage() {
   const [roomUrl, setRoomUrl] = useState("");
   const [roomErr, setRoomErr] = useState("");
   const [busy, setBusy] = useState(false);
+  // SCATOLA A OROLOGERIA for the room (radio/call excluded by design)
+  const [timelock, setTimelock] = useState(false);
+  const [openAt, setOpenAt] = useState("");
 
   const qrSrc = useMemo(() => {
     if (!roomUrl) return "";
@@ -23,7 +26,10 @@ export default function ChatPage() {
       const r = await fetch("/live", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind: "chat", maxhours: 4, cap: null }),
+        body: JSON.stringify({
+          kind: "chat", maxhours: 4, cap: null,
+          ...(timelock && openAt ? { open_at: new Date(openAt).toISOString() } : {}),
+        }),
       });
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "room failed");
       const j = await r.json();
@@ -46,6 +52,35 @@ export default function ChatPage() {
       </section>
 
       <section className="panel" style={{ textAlign: "center" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap",
+                     justifyContent: "center", alignItems: "center" }}>
+          <button className="bevel" aria-pressed={timelock}
+                  style={{ minHeight: 44, padding: "8px 14px", fontSize: 12,
+                           background: timelock ? "var(--blue)" : undefined,
+                           color: timelock ? "var(--panel)" : undefined }}
+                  onClick={() => setTimelock(!timelock)}>
+            {timelock ? "🔐 SEALED ROOM — ON" : "📦 SEALED ROOM — OFF"}
+          </button>
+          {timelock && (
+            <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+              <input type="datetime-local" value={openAt}
+                     onChange={(e) => setOpenAt(e.target.value)}
+                     style={{ minHeight: 44 }} />
+              <button className="bevel" style={{ minHeight: 44, padding: "8px 12px", fontSize: 11 }}
+                      onClick={() => setOpenAt(new Date(Date.now() + 3600e3).toJSON().slice(0, 16))}>+1h</button>
+              <button className="bevel" style={{ minHeight: 44, padding: "8px 12px", fontSize: 11 }}
+                      onClick={() => setOpenAt(new Date(Date.now() + 24 * 3600e3).toJSON().slice(0, 16))}>+24h</button>
+              <button className="bevel" style={{ minHeight: 44, padding: "8px 12px", fontSize: 11 }}
+                      onClick={() => setOpenAt(new Date(Date.now() + 7 * 24 * 3600e3).toJSON().slice(0, 16))}>+7d</button>
+            </span>
+          )}
+        </div>
+        {timelock && (
+          <p className="dim small" style={{ marginTop: 8 }}>
+            the room opens at that moment — until then the link shows the
+            countdown and refuses every message. the fuse starts at opening.
+          </p>
+        )}
         {roomUrl ? (
           <>
             <div className="sec-label">ROOM LINK — SHARE IT</div>

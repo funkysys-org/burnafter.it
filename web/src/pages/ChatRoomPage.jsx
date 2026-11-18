@@ -32,6 +32,25 @@ function fmtFuse(iso) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
+function SealCountdown({ opensAt, onOpen }) {
+  const [left, setLeft] = useState("");
+  useEffect(() => {
+    const tick = () => {
+      const ms = new Date(opensAt).getTime() - Date.now();
+      if (ms <= 0) { onOpen(); return; }
+      const s = Math.floor(ms / 1000);
+      const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600),
+            m = Math.floor((s % 3600) / 60);
+      setLeft(`OPENS IN ${d > 0 ? d + "d " : ""}${String(h).padStart(2, "0")}:${
+        String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`);
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [opensAt, onOpen]);
+  return <span>{left}</span>;
+}
+
 export default function ChatRoomPage() {
   const { hash } = useParams();
   const [phase, setPhase] = useState("gate"); // gate|room|burned
@@ -49,7 +68,7 @@ export default function ChatRoomPage() {
     return qr.createDataURL(4, 4);
   }, [roomUrl]);
 
-  useEffect(() => {
+  const loadMeta = React.useCallback(() => {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 800);
     fetch(`/live/${hash}/meta`, { signal: ctl.signal })
@@ -58,6 +77,7 @@ export default function ChatRoomPage() {
       .catch(() => setMeta(null));
     return () => { clearTimeout(t); ctl.abort(); };
   }, [hash]);
+  useEffect(() => loadMeta(), [loadMeta]);
 
   useEffect(() => {
     if (!meta || phase !== "room") return;
@@ -87,10 +107,23 @@ export default function ChatRoomPage() {
             Anonymous chat room — no accounts, nothing recorded.{" "}
             {meta ? `The room burns in ${fuse}.` : "The link is the whole room."}
           </p>
-          <button className="bevel primary" style={{ fontSize: 15 }}
-                  onClick={() => (meta ? setPhase("room") : setPhase("burned"))}>
-            ► ENTER THE ROOM (ANONYMOUS)
-          </button>
+          {meta && meta.sealed ? (
+            <>
+              <div className="lcd" style={{ fontSize: 22, padding: "12px 20px",
+                       display: "inline-block", marginTop: 8 }}>
+                <SealCountdown opensAt={meta.opens_at} onOpen={loadMeta} />
+              </div>
+              <p className="dim small" style={{ marginTop: 10 }}>
+                the room opens at that moment — until then every message is
+                refused. the fuse starts when it opens.
+              </p>
+            </>
+          ) : (
+            <button className="bevel primary" style={{ fontSize: 15 }}
+                    onClick={() => (meta ? setPhase("room") : setPhase("burned"))}>
+              ► ENTER THE ROOM (ANONYMOUS)
+            </button>
+          )}
           <p className="dim small" style={{ marginTop: 10 }}>
             when the fuse runs out, the room and everything said in it burn
           </p>

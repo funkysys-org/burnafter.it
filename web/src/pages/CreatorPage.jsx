@@ -61,6 +61,9 @@ export default function CreatorPage() {
   const [resultUrl, setResultUrl] = useState("");
   const [error, setError] = useState("");
   const [converting, setConverting] = useState(false);
+  // SCATOLA A OROLOGERIA: seal the shout until open_at (locked 2026-11-17)
+  const [timelock, setTimelock] = useState(false);
+  const [openAt, setOpenAt] = useState("");
   const fileRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -84,6 +87,9 @@ export default function CreatorPage() {
       const fd = new FormData();
       fd.append("maxhits", String(views));
       fd.append("maxtime", String(minutes));
+      if (timelock && openAt) {
+        fd.append("open_at", new Date(openAt).toISOString());
+      }
       if (type === "text") fd.append("data", text);
       else fd.append("data", file);
       // XHR for upload progress
@@ -299,6 +305,42 @@ export default function CreatorPage() {
         <p className="dim small" style={{ marginTop: 6 }}>
           views OR time — whichever runs out first burns the tape. no undo.
         </p>
+      </section>
+
+      <section>
+        <div className="sec-label">4 · SCATOLA A OROLOGERIA (OPTIONAL)</div>
+        <div className="panel" style={{ marginTop: 8,
+                 display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="bevel" aria-pressed={timelock}
+                  style={{ minHeight: 44, padding: "8px 14px",
+                           background: timelock ? "var(--blue)" : undefined,
+                           color: timelock ? "var(--panel)" : undefined }}
+                  onClick={() => setTimelock(!timelock)}>
+            {timelock ? "🔐 SEALED BOX — ON" : "📦 SEALED BOX — OFF"}
+          </button>
+          {timelock && (
+            <span style={{ display: "inline-flex", gap: 8, flexWrap: "wrap",
+                           alignItems: "center" }}>
+              <input type="datetime-local" value={openAt}
+                     onChange={(e) => setOpenAt(e.target.value)}
+                     style={{ minHeight: 44 }} />
+              <button className="bevel" style={{ minHeight: 44, padding: "8px 12px", fontSize: 11 }}
+                      onClick={() => setOpenAt(new Date(Date.now() + 3600e3).toJSON().slice(0, 16))}>+1h</button>
+              <button className="bevel" style={{ minHeight: 44, padding: "8px 12px", fontSize: 11 }}
+                      onClick={() => setOpenAt(new Date(Date.now() + 24 * 3600e3).toJSON().slice(0, 16))}>+24h</button>
+              <button className="bevel" style={{ minHeight: 44, padding: "8px 12px", fontSize: 11 }}
+                      onClick={() => setOpenAt(new Date(Date.now() + 7 * 24 * 3600e3).toJSON().slice(0, 16))}>+7d</button>
+            </span>
+          )}
+        </div>
+        {timelock && (
+          <p className="dim small" style={{ marginTop: 6 }}>
+            the link works immediately — anyone who has it sees the closed
+            box and the countdown. the seal is enforced by the server, not by
+            cryptographic time-lock. fuse and views start counting when the
+            box opens (max 7 days out).
+          </p>
+        )}
       </section>
 
       <section className="panel" style={{

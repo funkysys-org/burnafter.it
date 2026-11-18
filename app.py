@@ -94,6 +94,7 @@ UPDATE shouts
    AND is_active
    AND current_hits < max_hits
    AND expires_at > %s
+   AND (open_at IS NULL OR open_at <= %s)
 """
 
 # Two-phase GC, phase 1: a failed claim against a still-active row
@@ -104,6 +105,53 @@ UPDATE shouts
  WHERE hash = %s
    AND is_active
 """
+
+
+# ── SCATOLA A OROLOGERIA (timed release) ────────────────────────────────────
+# Sealed shouts/rooms become claimable only at open_at; the fuse counts
+# from open_at, not from creation. Locked by the maintainer 2026-11-17:
+# shouts + ESC chat rooms ONLY (radio/call excluded); premature claims
+# get HTTP 425 Too Early + opens_at; cap: open_at can't be further than
+# 7 days out (beyond that this would be a storage service).
+OPEN_AT_MAX_DAYS = 7
+
+
+def _parse_open_at(form, now):
+    """Parse and validate the optional open_at field.
+
+    Absent/empty -> now() (a normal, immediately-open shout — locked #1).
+    Returns a naive-UTC datetime (schema convention: naive UTC).
+    Raises ValueError with an honest message on bad input.
+    """
+    raw = (form.get("open_at") or "").strip()
+    if not raw:
+        return now
+    try:
+        dt = datetime.datetime.fromisoformat(raw)
+    except ValueError:
+        raise ValueError("open_at must be an ISO 8601 datetime") from None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    if dt <= now:
+        raise ValueError("open_at must be in the future")
+    if dt > now + datetime.timedelta(days=OPEN_AT_MAX_DAYS):
+        raise ValueError(
+            f"open_at can be at most {OPEN_AT_MAX_DAYS} days in the future"
+        )
+    return dt
+
+
+def _ensure_shouts_schema(conn):
+    """Boot migration: existing volumes never re-run initdb — add the
+    open_at column idempotently (same pattern as live.py's live schema)."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='shouts' AND column_name='open_at'"
+        )
+        if cur.fetchone() is None:
+            cur.execute("ALTER TABLE shouts ADD COLUMN open_at TIMESTAMP")
+    conn.commit()
 
 
 def claim(conn, shout_hash: str) -> bool:
@@ -118,7 +166,7 @@ def claim(conn, shout_hash: str) -> bool:
     """
     now = now_utc()
     with conn.cursor() as cur:
-        cur.execute(_CLAIM_SQL, (shout_hash, now))
+        cur.execute(_CLAIM_SQL, (shout_hash, now, now))
         if cur.rowcount == 1:
             conn.commit()
             return True
@@ -230,8 +278,8 @@ class RateLimiter:
 # ─── Flask application factory (slice 2) ──────────────────────────────────────
 
 _INSERT_SHOUT_SQL = """
-INSERT INTO shouts (hash, storage_key, shout_type, max_hits, expires_at)
-VALUES (%s, %s, %s, %s, %s)
+INSERT INTO shouts (hash, storage_key, shout_type, max_hits, expires_at, open_at)
+VALUES (%s, %s, %s, %s, %s, %s)
 """
 
 _INSERT_BLOB_SQL = """
@@ -319,6 +367,11 @@ def create_app(config_overrides=None):
             "DATABASE_URL is required (Postgres holds all state in v2-mono)"
         )
 
+    # Boot migration: sealed shouts need the open_at column; existing
+    # volumes never re-run initdb (the image-manifest lesson).
+    with psycopg.connect(app.config["DATABASE_URL"]) as _boot_conn:
+        _ensure_shouts_schema(_boot_conn)
+
     # Boot-guard (design §4.5/6a): the per-process SECRET_KEY of v1 is
     # the tombstone — fail loud on missing/weak/default session keys.
     secret = app.config.get("SECRET_KEY")
@@ -400,7 +453,7 @@ def create_app(config_overrides=None):
 
     _META_SQL = """
 SELECT shout_type, max_hits, max_hits - current_hits AS views_left,
-       expires_at
+       expires_at, open_at
   FROM shouts
  WHERE hash = %s AND is_active
    AND current_hits < max_hits
@@ -422,12 +475,15 @@ SELECT shout_type, max_hits, max_hits - current_hits AS views_left,
                 row = cur.fetchone()
                 if row is None:
                     return jsonify(error="no such shout"), 404
-                shout_type, max_hits, views_left, expires_at = row
+                shout_type, max_hits, views_left, expires_at, open_at = row
+        sealed = open_at is not None and open_at > now_utc()
         return jsonify(
             type=shout_type,
             max_hits=max_hits,
             views_left=views_left,
             expires_at=expires_at.isoformat() + "Z",
+            sealed=sealed,
+            opens_at=(open_at.isoformat() + "Z") if open_at is not None else None,
         )
 
     @app.post("/post/text")
@@ -436,6 +492,7 @@ SELECT shout_type, max_hits, max_hits - current_hits AS views_left,
             return jsonify(error="too many requests"), 429
         try:
             maxhits, maxtime = _parse_limits(request.form)
+            open_at = _parse_open_at(request.form, now_utc())
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 
@@ -448,14 +505,15 @@ SELECT shout_type, max_hits, max_hits - current_hits AS views_left,
 
         shout_hash = "h" + secrets.token_hex(16)
         storage_key = "s" + secrets.token_hex(16)
-        expires_at = now_utc() + datetime.timedelta(minutes=maxtime)
+        # SCATOLA A OROLOGERIA: the fuse starts when the box OPENS
+        expires_at = open_at + datetime.timedelta(minutes=maxtime)
 
         conn = _connect()
         try:
             with conn.cursor() as cur:
                 cur.execute(
                     _INSERT_SHOUT_SQL,
-                    (shout_hash, storage_key, "text", maxhits, expires_at),
+                    (shout_hash, storage_key, "text", maxhits, expires_at, open_at),
                 )
                 cur.execute(
                     _INSERT_BLOB_SQL,
@@ -481,6 +539,7 @@ SELECT shout_type, max_hits, max_hits - current_hits AS views_left,
 
         try:
             maxhits, maxtime = _parse_limits(request.form)
+            open_at = _parse_open_at(request.form, now_utc())
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 
@@ -509,14 +568,15 @@ SELECT shout_type, max_hits, max_hits - current_hits AS views_left,
 
         shout_hash = "h" + secrets.token_hex(16)
         storage_key = "s" + secrets.token_hex(16)
-        expires_at = now_utc() + datetime.timedelta(minutes=maxtime)
+        # SCATOLA A OROLOGERIA: the fuse starts when the box OPENS
+        expires_at = open_at + datetime.timedelta(minutes=maxtime)
 
         conn = _connect()
         try:
             with conn.cursor() as cur:
                 cur.execute(
                     _INSERT_SHOUT_SQL,
-                    (shout_hash, storage_key, posttype, maxhits, expires_at),
+                    (shout_hash, storage_key, posttype, maxhits, expires_at, open_at),
                 )
                 cur.execute(
                     _INSERT_BLOB_SQL,
@@ -540,6 +600,24 @@ SELECT shout_type, max_hits, max_hits - current_hits AS views_left,
 
         conn = _connect()
         try:
+            # SCATOLA A OROLOGERIA: premature claims are 425 Too Early —
+            # they consume no view and never flip the row
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT open_at FROM shouts "
+                    "WHERE hash = %s AND is_active",
+                    (shout_hash,),
+                )
+                row = cur.fetchone()
+            if row is not None and row[0] is not None and row[0] > now_utc():
+                return (
+                    jsonify(
+                        error="not yet — the box opens later",
+                        opens_at=row[0].isoformat() + "Z",
+                    ),
+                    425,
+                )
+
             if not claim(conn, shout_hash):
                 return _burned_response()
 

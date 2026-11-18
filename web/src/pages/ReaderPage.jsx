@@ -30,6 +30,42 @@ function BurnedScreen({ meta }) {
   );
 }
 
+function SealedScreen({ opensAt, onOpen }) {
+  const [left, setLeft] = useState("");
+  useEffect(() => {
+    const tick = () => {
+      const ms = new Date(opensAt).getTime() - Date.now();
+      if (ms <= 0) { onOpen(); return; }
+      const s = Math.floor(ms / 1000);
+      const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600),
+            m = Math.floor((s % 3600) / 60);
+      setLeft(`${d > 0 ? d + "d " : ""}${String(h).padStart(2, "0")}:${
+        String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`);
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [opensAt, onOpen]);
+  const when = new Date(opensAt).toLocaleString();
+  return (
+    <main style={{ textAlign: "center", padding: "60px 0" }}>
+      <div style={{ fontSize: 64 }}>📦</div>
+      <h1 style={{ fontFamily: "'Silkscreen', monospace" }}>SEALED BOX</h1>
+      <p className="dim" style={{ margin: "12px 0" }}>
+        this box opens at {when} — nothing can open it earlier.
+        looking at the closed box burns nothing.
+      </p>
+      <div className="lcd" style={{ fontSize: 28, padding: "14px 22px" }}>
+        OPENS IN {left}
+      </div>
+      <p className="dim small" style={{ marginTop: 12 }}>
+        the seal is enforced by the server, not by cryptographic time-lock.
+        when it opens, the fuse and the views start counting — come back.
+      </p>
+    </main>
+  );
+}
+
 export default function ReaderPage() {
   const { type, hash } = useParams();
   const [phase, setPhase] = useState("gate"); // gate|confirming|reveal|burning|burned|fetcherr
@@ -43,7 +79,7 @@ export default function ReaderPage() {
   const mediaRef = useRef(null);                 // <audio>/<video> element
 
   // feature-detect the non-consuming metadata endpoint (spec §6)
-  useEffect(() => {
+  const loadMeta = React.useCallback(() => {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 800);
     fetch(`/meta/${type}/${hash}`, { signal: ctl.signal })
@@ -52,6 +88,7 @@ export default function ReaderPage() {
       .catch(() => setMeta(null));
     return () => { clearTimeout(t); ctl.abort(); };
   }, [type, hash]);
+  useEffect(() => loadMeta(), [loadMeta]);
 
   // TTL ticker (meta mode only)
   useEffect(() => {
@@ -126,6 +163,11 @@ export default function ReaderPage() {
   }
 
   if (phase === "burned") return <BurnedScreen meta={meta} />;
+
+  // SCATOLA A OROLOGERIA: sealed box — the countdown IS the content.
+  // Looking at the closed box consumes nothing (locked: views start at
+  // open_at; the peek is free).
+  if (meta && meta.sealed) return <SealedScreen opensAt={meta.opens_at} onOpen={loadMeta} />;
 
   if (phase === "fetcherr") {
     return (

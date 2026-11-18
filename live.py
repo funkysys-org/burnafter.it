@@ -35,6 +35,34 @@ POLL_MAX_SEGS = 20        # gate major #1c: ~60s per poll response window
 _redis_clients = {}
 
 
+# ── SCATOLA A OROLOGERIA: chat rooms only (radio/call excluded, locked
+# 2026-11-17). Same rules as the shouts side (app.py): future open_at
+# seals the room, the fuse counts from open_at, premature posts get
+# HTTP 425 + opens_at, cap 7 days out.
+OPEN_AT_MAX_DAYS = 7
+
+
+def _parse_open_at(body, now):
+    raw = (body.get("open_at") or "")
+    if isinstance(raw, str):
+        raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        dt = datetime.datetime.fromisoformat(raw)
+    except (TypeError, ValueError):
+        raise ValueError("open_at must be an ISO 8601 datetime") from None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    if dt <= now:
+        raise ValueError("open_at must be in the future")
+    if dt > now + datetime.timedelta(days=OPEN_AT_MAX_DAYS):
+        raise ValueError(
+            f"open_at can be at most {OPEN_AT_MAX_DAYS} days in the future"
+        )
+    return dt
+
+
 def _cfg(name, default):
     return current_app.config.get(name) or default
 
@@ -178,6 +206,13 @@ def _ensure_live_schema(conn):
                 cur.execute(
                     "ALTER TABLE live_sessions ADD COLUMN callee_token TEXT"
                 )
+            # SCATOLA A OROLOGERIA (chat rooms): same boot-time rules
+            cur.execute(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='live_sessions' AND column_name='open_at'"
+            )
+            if cur.fetchone() is None:
+                cur.execute("ALTER TABLE live_sessions ADD COLUMN open_at TIMESTAMP")
         conn.commit()
     except Exception:  # noqa: BLE001 — live tables may not exist yet
         conn.rollback()
@@ -223,12 +258,23 @@ def create_session():
         if not 0 < cap <= 10000:
             return jsonify(error="cap must be within 1..10000"), 400
 
+    # SCATOLA A OROLOGERIA: chat rooms ONLY (locked: radio/call never
+    # seal — an open_at sent for live/call is ignored entirely)
+    open_at = None
+    if kind == "chat":
+        try:
+            open_at = _parse_open_at(body, now_utc())
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+
     h = ("L" if kind in ("live", "call") else "C") + secrets.token_hex(16)
     token = secrets.token_hex(32)
     # gate minor #4: store the HASH, never the raw token (constant-time
     # compare below works identically against the hash)
     token_hash = hashlib.sha256(token.encode()).hexdigest()
-    expires_at = now_utc() + datetime.timedelta(hours=hours)
+    # sealed rooms: the fuse starts when the room OPENS
+    base = open_at if (open_at is not None) else now_utc()
+    expires_at = base + datetime.timedelta(hours=hours)
 
     with _connect() as conn:
         _ensure_live_schema(conn)
@@ -236,9 +282,10 @@ def create_session():
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO live_sessions
-                       (hash, kind, source_token, listener_cap, expires_at)
-                   VALUES (%s, %s, %s, %s, %s) RETURNING id""",
-                (h, kind, token_hash, cap, expires_at),
+                       (hash, kind, source_token, listener_cap, expires_at,
+                        open_at)
+                   VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                (h, kind, token_hash, cap, expires_at, open_at),
             )
             (sid,) = cur.fetchone()
 
@@ -310,13 +357,17 @@ def live_meta(h):
                 if room is None:
                     return _burned()
                 cur.execute(
-                    "SELECT listener_cap, expires_at FROM live_sessions WHERE id = %s",
+                    "SELECT listener_cap, expires_at, open_at "
+                    "FROM live_sessions WHERE id = %s",
                     (room[0],),
                 )
-                cap, expires_at = cur.fetchone()
+                cap, expires_at, open_at = cur.fetchone()
+                sealed = open_at is not None and open_at > now_utc()
                 return jsonify(
                     on_air=True, kind="chat", listeners=None, cap=cap,
                     expires_at=expires_at.isoformat() + "Z",
+                    sealed=sealed,
+                    opens_at=(open_at.isoformat() + "Z") if open_at is not None else None,
                 )
             sid, _tok, cap, expires_at = row
     n = 0
@@ -587,6 +638,20 @@ def live_stats():
     return jsonify(live_now=live_now, chat_now=chat_now, call_now=call_now)
 
 
+def _seal_of(cur, sid):
+    """SCATOLA A OROLOGERIA: the room's open_at while it is still SEALED
+    (future), else None. Radio/call rows have open_at NULL and can
+    never seal."""
+    cur.execute(
+        "SELECT open_at FROM live_sessions WHERE id = %s",
+        (sid,),
+    )
+    row = cur.fetchone()
+    if row is None or row[0] is None:
+        return None
+    return row[0] if row[0] > now_utc() else None
+
+
 def _get_room_session(cur, h):
     """ESC room lookup: kind='chat', active, unexpired. Rooms have no
     source token — the link is the credential (as in the original
@@ -620,6 +685,17 @@ def live_say(h):
             if row is None:
                 return _burned()
             sid = row[0]
+            # SCATOLA A OROLOGERIA: a sealed room refuses messages —
+            # 425 with the honest opens_at (locked: "supercazzola")
+            sealed = _seal_of(cur, sid)
+            if sealed is not None:
+                return (
+                    jsonify(
+                        error="not yet — the room opens later",
+                        opens_at=sealed.isoformat() + "Z",
+                    ),
+                    425,
+                )
             cur.execute(
                 """INSERT INTO live_messages (session_id, nickname, body)
                    VALUES (%s, %s, %s) RETURNING id, said_at""",
@@ -642,6 +718,17 @@ def live_chat(h):
             if row is None:
                 return _burned()
             sid = row[0]
+            # SCATOLA A OROLOGERIA: reading a sealed room's messages is
+            # refused exactly like writing to it
+            sealed = _seal_of(cur, sid)
+            if sealed is not None:
+                return (
+                    jsonify(
+                        error="not yet — the room opens later",
+                        opens_at=sealed.isoformat() + "Z",
+                    ),
+                    425,
+                )
             cur.execute(
                 """SELECT id, nickname, body, said_at
                      FROM live_messages

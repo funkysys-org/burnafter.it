@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS shouts (
     is_active    BOOLEAN NOT NULL DEFAULT TRUE,
     created_at   TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
     expires_at   TIMESTAMP NOT NULL,
+    -- SCATOLA A OROLOGERIA: NULL (or past) = open now; future = sealed
+    -- until then. Fuse counts from open_at (schema conventions: naive UTC).
+    open_at      TIMESTAMP,
     burned_at    TIMESTAMP
 );
 

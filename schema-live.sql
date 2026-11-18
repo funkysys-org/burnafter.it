@@ -14,7 +14,11 @@ CREATE TABLE IF NOT EXISTS live_sessions (
                                                 -- dies with session
     listener_cap     INTEGER,                -- NULL = unlimited (locked #2)
     created_at       TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),
-    expires_at       TIMESTAMP NOT NULL,     -- ≤ 24h from creation (locked #1)
+    expires_at       TIMESTAMP NOT NULL,     -- ≤ 24h from the OPEN time for
+                                                -- sealed rooms (SCATOLA A
+                                                -- OROLOGERIA, chat only)
+    open_at          TIMESTAMP,               -- chat rooms only: NULL = open
+                                                -- now; future = sealed room
     ended_at         TIMESTAMP,              -- manual end / heartbeat death
     saved_shout_hash TEXT                    -- set only by explicit save (#3)
 );
