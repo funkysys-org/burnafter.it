@@ -21,10 +21,6 @@ export function Masthead() {
                 style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
             ► SHOUT
           </Link>
-          <Link to="/studio" className="bevel"
-                style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
-            ● GO LIVE
-          </Link>
           <Link to="/chat" className="bevel"
                 style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
             💬 CHAT
@@ -32,6 +28,10 @@ export function Masthead() {
           <Link to="/call" className="bevel"
                 style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
             📞 PHONE
+          </Link>
+          <Link to="/studio" className="bevel"
+                style={{ fontSize: 10, padding: "8px 10px", minHeight: 0 }}>
+            ● GO LIVE
           </Link>
         </nav>
       </div>
