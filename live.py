@@ -636,8 +636,9 @@ def live_save(h):
 @live.get("/live/stats")
 def live_stats():
     """Tiny aggregate for the home page: REAL counts only — active live
-    sessions, open chat rooms, live calls. No per-item data, no hashes
-    leaked."""
+    sessions, open chat rooms, live calls, and shouts not burned yet
+    (active, unexpired, views remaining — sealed boxes count: they hold
+    a future life). No per-item data, no hashes leaked."""
     with _connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -649,7 +650,23 @@ def live_stats():
                 (now_utc(), now_utc(), now_utc()),
             )
             live_now, chat_now, call_now = cur.fetchone()
-    return jsonify(live_now=live_now, chat_now=chat_now, call_now=call_now)
+            # shouts not burned yet — the shouts table lives in the same
+            # DB; a pure aggregate (a SEALED box is alive: it burns later)
+            cur.execute(
+                """SELECT count(*)
+                     FROM shouts
+                    WHERE is_active
+                      AND current_hits < max_hits
+                      AND expires_at > %s""",
+                (now_utc(),),
+            )
+            (shouts_alive,) = cur.fetchone()
+    return jsonify(
+        live_now=live_now,
+        chat_now=chat_now,
+        call_now=call_now,
+        shouts_alive=shouts_alive,
+    )
 
 
 def _seal_of(cur, sid):

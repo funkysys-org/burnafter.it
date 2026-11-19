@@ -333,3 +333,50 @@ def test_reap_dead_live_spares_rooms_and_calls(live_api, live_db):
         live_api.post(f"/live/{h_open}/say", json={"nickname": "x", "body": "alive"})
         .status_code == 200
     )
+
+
+def test_shouts_alive_counter_counts_only_living_shouts(live_api, live_db):
+    """'SHOUTS NOT BURNED YET' — the new home stats counter: an aggregate
+    of living shouts (active, unexpired, views remaining). Burned
+    (consumed) and expired ones must NOT count. Uses the live fixture
+    (the stats route lives in the live blueprint and needs live_sessions
+    present); shouts isolated by the same TRUNCATE the db fixture uses."""
+    live_db.execute("TRUNCATE hit_logs, blobs, shouts RESTART IDENTITY CASCADE")
+    live_db.commit()
+    api = live_api
+
+    # three living text shouts
+    for i in range(3):
+        r = _post_text(api)
+        assert r.status_code == 200
+    h = r.get_json()["url"].rsplit("/", 1)[1]  # the last one
+
+    # burn one by consuming its single view
+    assert api.get(f"/stream_any/text/{h}").status_code == 200
+    assert api.get(f"/stream_any/text/{h}").status_code == 404  # burned
+
+    # expire one by pushing its fuse into the past
+    first = api.post(
+        "/post/text",
+        data={"data": "i will expire", "maxhits": "5", "maxtime": "60"},
+        content_type="multipart/form-data",
+    ).get_json()["url"].rsplit("/", 1)[1]
+    live_db.execute(
+        "UPDATE shouts SET expires_at = %s WHERE hash = %s",
+        (UTCNOW() - datetime.timedelta(seconds=1), first),
+    )
+    live_db.commit()
+
+    # a SEALED box is still "not burned yet" — it holds a future life
+    sealed = _post_text(api, open_at=_in(60))
+    assert sealed.status_code == 200
+
+    # live_now/chat_now/call_now need the live blueprint app; query the
+    # stats route through the live_api-shaped fixture below
+    r = api.get("/live/stats")
+    assert r.status_code == 200
+    j = r.get_json()
+    # living math: 3 created - 1 burned (views) - 1 expired + 1 sealed = 3
+    # (a sealed box holds a future life — it counts as not-burned-yet)
+    assert j["shouts_alive"] == 3
+    assert "shouts_alive" in j
