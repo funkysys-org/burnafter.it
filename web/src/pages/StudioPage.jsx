@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import qrcode from "qrcode-generator";
 import { Masthead } from "./HomePage";
+import ShareButton from "../ShareButton";
 import AlfaBanner from "../AlfaBanner";
 import { ThemeSwitch } from "../theme";
 import LiveChat from "../LiveChat";
